@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Background -->
+  <rect width="192" height="192" fill="#ffffff" rx="32"/>
+  
+  <!-- Four Quadrants - VAST CANVAS Colors -->
+  <!-- Top Left: Teal -->
+  <circle cx="64" cy="64" r="48" fill="#2aa7a7"/>
+  
+  <!-- Top Right: Blue -->
+  <circle cx="128" cy="64" r="48" fill="#1e40af"/>
+  
+  <!-- Bottom Left: Pink -->
+  <circle cx="64" cy="128" r="48" fill="#ec4899"/>
+  
+  <!-- Bottom Right: Orange -->
+  <circle cx="128" cy="128" r="48" fill="#f97316"/>
+  
+  <!-- Center Yellow Star -->
+  <g transform="translate(96, 96)">
+    <polygon points="0,-20 5.7,-6.2 20,-6.2 10,3 15.7,18 0,10 -15.7,18 -10,3 -20,-6.2 -5.7,-6.2" fill="#eab308" stroke="#ffffff" stroke-width="1.5"/>
+  </g>
+</svg>
