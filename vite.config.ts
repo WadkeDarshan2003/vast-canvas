@@ -53,7 +53,6 @@ export default defineConfig(({ mode }) => {
             manualChunks: {
               'firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage', 'firebase/functions'],
               'recharts': ['recharts'],
-              'vendor': ['react', 'react-dom'],
             },
           },
         },
