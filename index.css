@@ -1,0 +1,291 @@
+@import "tailwindcss";
+
+/* Global overrides for small-screen tweaks */
+@media (max-width: 640px) {
+  /* Slightly increase font-size for elements marked with .mobile-increase on mobile */
+  .mobile-increase {
+    font-size: 16.5px; /* subtle +0.5px bump for mobile */
+    line-height: 1.25;
+  }
+  /* Make project cards a bit larger on mobile for readability */
+  [data-section="active-projects"] .mobile-card {
+    padding: 0.75rem; /* increase inner spacing */
+    min-height: 140px; /* slightly taller cards */
+    border-radius: 0.75rem; /* keep rounded look */
+  }
+  /* Increase header padding and spacing inside the card */
+  [data-section="active-projects"] .mobile-card .p-4 {
+    padding: 1rem !important;
+  }
+  /* Slightly narrow project cards on larger screens for denser layout */
+  @media (min-width: 1024px) {
+    .desktop-narrow {
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+  }
+}
+
+/* Spinner loader for buttons */
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Fade in animation for modals and dialogs */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Hero and agency transition helpers - tweak as needed */
+.hero-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0; /* sit behind content */
+  transition: opacity 360ms ease, transform 360ms ease;
+  pointer-events: none;
+}
+
+.hero-wrapper {
+  position: relative; /* create stacking context for hero background */
+  overflow: visible;
+}
+
+.agency-section {
+  position: relative;
+  z-index: 10; /* ensure agency content sits above hero background */
+  transform: translateY(12px);
+  opacity: 0;
+  transition: transform 360ms ease, opacity 360ms ease;
+}
+
+.agency-section.start-transition {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* If the hero is meant to scroll away, ensure it's not fixed */
+.hero-fixed {
+  position: static !important;
+}
+
+/* iPhone-style Glassmorphism */
+.glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: white !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-input:focus {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  transform: translateY(-1px);
+}
+
+.glass-input::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+  font-weight: 400;
+}
+
+/* Advanced Mesh Gradient (Breathing) */
+.animated-gradient {
+  background-color: #050505;
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(11, 85%, 60%, 0.3) 0, transparent 55%), 
+    radial-gradient(at 100% 0%, hsla(242, 85%, 60%, 0.3) 0, transparent 55%), 
+    radial-gradient(at 50% 100%, hsla(210, 85%, 60%, 0.3) 0, transparent 55%),
+    radial-gradient(at 0% 100%, hsla(338, 85%, 60%, 0.2) 0, transparent 55%),
+    radial-gradient(at 100% 100%, hsla(200, 85%, 60%, 0.3) 0, transparent 55%);
+  background-attachment: fixed;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Moving highlights to simulate the "living" mesh from the image */
+.animated-gradient::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    radial-gradient(circle at 50% 50%, hsla(200, 100%, 80%, 0.1), transparent 40%);
+  animation: breathingGradient 20s infinite alternate ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes breathingGradient {
+  0% { transform: scale(1) translate(-10%, -10%); }
+  50% { transform: scale(1.2) translate(10%, 10%); }
+  100% { transform: scale(1) translate(-10%, 10%); }
+}
+
+/* Premium White-Gradient Primary Button */
+.primary-button {
+  background: linear-gradient(to bottom, #ffffff, #e5e7eb);
+  color: #0f172a;
+  font-weight: 700;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.primary-button:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #f9fafb, #d1d5db);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.primary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.primary-button:disabled {
+  background: linear-gradient(to bottom, #9ca3af, #6b7280);
+  color: rgba(15, 23, 42, 0.5);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Tab Styles */
+.tab-active {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.tab-inactive {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.tab-inactive:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Shared fallback elevation for card-like containers */
+:root {
+  --card-shadow-base: 0 10px 24px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.05);
+  --card-shadow-hover: 0 16px 34px rgba(15, 23, 42, 0.12), 0 6px 14px rgba(15, 23, 42, 0.08);
+  --dashboard-card-shadow-base: 0 12px 28px rgba(15, 23, 42, 0.1), 0 3px 10px rgba(15, 23, 42, 0.06);
+  --dashboard-card-shadow-hover: 0 20px 40px rgba(15, 23, 42, 0.14), 0 8px 18px rgba(15, 23, 42, 0.1);
+  --project-card-media-shadow: 0 16px 30px rgba(15, 23, 42, 0.16), 0 6px 14px rgba(15, 23, 42, 0.1);
+  --project-card-content-shadow: 0 14px 30px rgba(15, 23, 42, 0.12), 0 5px 12px rgba(15, 23, 42, 0.08);
+  --project-card-content-shadow-hover: 0 22px 44px rgba(15, 23, 42, 0.18), 0 10px 20px rgba(15, 23, 42, 0.12);
+}
+
+:where(
+  .mobile-card,
+  div.bg-white.rounded-md,
+  div.bg-white.rounded-lg,
+  div.bg-white.rounded-xl,
+  div.bg-white.rounded-2xl,
+  div.bg-white.rounded-3xl,
+  section.bg-white.rounded-lg,
+  section.bg-white.rounded-xl,
+  section.bg-white.rounded-2xl,
+  section.bg-white.rounded-3xl,
+  article.bg-white.rounded-lg,
+  article.bg-white.rounded-xl,
+  article.bg-white.rounded-2xl,
+  article.bg-white.rounded-3xl,
+  div.bg-gray-900.rounded-xl,
+  div.bg-gray-900.rounded-2xl,
+  div.bg-gray-900.rounded-3xl
+) {
+  box-shadow: var(--card-shadow-base);
+}
+
+:where(
+  .mobile-card,
+  div.bg-white.rounded-md,
+  div.bg-white.rounded-lg,
+  div.bg-white.rounded-xl,
+  div.bg-white.rounded-2xl,
+  div.bg-white.rounded-3xl,
+  section.bg-white.rounded-lg,
+  section.bg-white.rounded-xl,
+  section.bg-white.rounded-2xl,
+  section.bg-white.rounded-3xl,
+  article.bg-white.rounded-lg,
+  article.bg-white.rounded-xl,
+  article.bg-white.rounded-2xl,
+  article.bg-white.rounded-3xl,
+  div.bg-gray-900.rounded-xl,
+  div.bg-gray-900.rounded-2xl,
+  div.bg-gray-900.rounded-3xl
+):hover {
+  box-shadow: var(--card-shadow-hover);
+}
+
+/* Stronger elevation for dashboard cards */
+.dashboard-surface .dashboard-card {
+  box-shadow: var(--dashboard-card-shadow-base);
+  transition: box-shadow 220ms ease, transform 220ms ease;
+}
+
+.dashboard-surface .dashboard-card:hover {
+  box-shadow: var(--dashboard-card-shadow-hover);
+  transform: translateY(-1px);
+}
+
+.dashboard-surface .dashboard-card-interactive {
+  box-shadow: var(--dashboard-card-shadow-base);
+  transition: box-shadow 220ms ease, transform 220ms ease;
+}
+
+.dashboard-surface .dashboard-card-interactive:hover {
+  box-shadow: var(--dashboard-card-shadow-hover);
+  transform: translateY(-1px);
+}
+
+/* Stronger elevation for project listing cards */
+.projects-surface .project-card-media {
+  box-shadow: var(--project-card-media-shadow);
+}
+
+.projects-surface .project-card-content {
+  box-shadow: var(--project-card-content-shadow);
+  transition: box-shadow 260ms ease, transform 260ms ease;
+}
+
+.projects-surface .project-card:hover .project-card-content {
+  box-shadow: var(--project-card-content-shadow-hover);
+  transform: translateY(-2px);
+}
