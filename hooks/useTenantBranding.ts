@@ -1,6 +1,4 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { getTenantBranding } from '../services/tenantService';
+import { useState } from 'react';
 
 interface TenantBranding {
   brandName: string;
@@ -14,35 +12,11 @@ interface TenantBranding {
  * Falls back to default Vast Canvas Connect branding if no custom branding is set
  */
 export const useTenantBranding = (): TenantBranding => {
-  const { user } = useAuth();
-  const [branding, setBranding] = useState<TenantBranding>({
-    brandName: 'Vast Canvas Connect',
+  const [branding] = useState<TenantBranding>({
+    brandName: 'Vast Canvas',
     logoUrl: '/qt=q_95.webp',
-    isLoading: true
+    isLoading: false
   });
-
-  useEffect(() => {
-    const fetchBranding = async () => {
-      setBranding(prev => ({ ...prev, isLoading: true }));
-      
-      try {
-        const tenantBranding = await getTenantBranding(user?.tenantId);
-        setBranding({
-          brandName: tenantBranding.brandName,
-          logoUrl: tenantBranding.logoUrl,
-          isLoading: false
-        });
-      } catch (error) {
-        setBranding({
-          brandName: 'Vast Canvas Connect',
-          logoUrl: '/qt=q_95.webp',
-          isLoading: false
-        });
-      }
-    };
-
-    fetchBranding();
-  }, [user?.tenantId]);
 
   return branding;
 };

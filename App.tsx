@@ -255,7 +255,22 @@ interface AppContentProps {
 
 function AppContent({ projects, setProjects, users, setUsers }: AppContentProps) {
 
-  const { user, logout, loading: authLoading, currentTenant, availableTenants } = useAuth();
+  const { user, logout, loading: authLoading, currentTenant } = useAuth();
+
+  const adminProfileFallback = {
+    name: 'Admin User',
+    email: 'admin@vastcanvas.local',
+    phone: '+91 9876543210'
+  };
+
+  const profileDisplayData = user && user.role === Role.ADMIN
+    ? {
+        ...user,
+        name: user.name?.trim() || adminProfileFallback.name,
+        email: user.email?.trim() || adminProfileFallback.email,
+        phone: user.phone?.trim() || adminProfileFallback.phone,
+      }
+    : user;
 
   const { unreadCount, addNotification } = useNotifications();
   const { brandName, logoUrl } = useTenantBranding();
@@ -282,21 +297,12 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
   const [realTimeTasks, setRealTimeTasks] = useState<Map<string, Task[]>>(new Map());
   const [showNotifPermissionBanner, setShowNotifPermissionBanner] = useState(false);
   const [isAutoSeedingDemo, setIsAutoSeedingDemo] = useState(false);
-
-  // --- Multi-tenant Admin State ---
-  const [selectedFirmId, setSelectedFirmId] = useState<string | null>(null);
+  const [isReloadingDummyData, setIsReloadingDummyData] = useState(false);
 
   // --- Project Filter State ---
   const [projectNameFilter, setProjectNameFilter] = useState('');
   const [projectCategoryFilterValue, setProjectCategoryFilterValue] = useState<ProjectCategory | 'All'>('All');
   const [projectSortBy, setProjectSortBy] = useState<'name-asc' | 'name-desc' | 'progress-asc' | 'progress-desc' | 'recent-asc' | 'recent-desc'>('recent-desc');
-
-  // Sync currentTenant from AuthContext to local selectedFirmId
-  useEffect(() => {
-    if (currentTenant?.id) {
-      setSelectedFirmId(currentTenant.id);
-    }
-  }, [currentTenant?.id]);
 
   // Initialize push notifications
   useEffect(() => {
@@ -347,6 +353,43 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
     }
   };
 
+  const handleReloadDummyData = async () => {
+    if (!user || user.role !== Role.ADMIN || isReloadingDummyData) return;
+
+    const effectiveTenantId = user.tenantId || 'vast-canvas';
+    if (!effectiveTenantId) return;
+
+    try {
+      setIsReloadingDummyData(true);
+      const result = await seedDemoData(effectiveTenantId, user.id, { replaceExisting: true });
+
+      if (result.success) {
+        addNotification({
+          title: 'Dummy Data Reloaded',
+          message: `${result.demoProjectIds?.length || 0} demo projects were refreshed successfully.`,
+          type: 'success',
+          recipientId: user.id
+        });
+      } else {
+        addNotification({
+          title: 'Dummy Data Reload Status',
+          message: result.message,
+          type: 'warning',
+          recipientId: user.id
+        });
+      }
+    } catch (error: any) {
+      addNotification({
+        title: 'Dummy Data Reload Failed',
+        message: error?.message || 'Could not reload dummy data.',
+        type: 'error',
+        recipientId: user.id
+      });
+    } finally {
+      setIsReloadingDummyData(false);
+    }
+  };
+
   // Subscribe to Firebase real-time updates
   useEffect(() => {
     // Capture URL query params on load and defer applying until data is available
@@ -379,15 +422,7 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
     // Long term fix: Ensure vendorIds is always updated when tasks are assigned (implemented in projectDetailsService)
     // But for immediate fix for existing data, we fetch all.
 
-    // For multi-tenant designers, pass their tenantIds array so they see projects from all their firms
-    const userTenantIds = (user as any).tenantIds || [];
-    const isMultiTenantDesigner = (user.role === Role.DESIGNER) && userTenantIds.length > 0;
-    // Check if user (admin or designer) has multiple tenants via availableTenants (from AuthContext)
-    const isMultiTenantUser = (user.role === Role.ADMIN || user.role === Role.DESIGNER) && availableTenants.length > 1;
-
-    // Determine which tenantId to use for data fetching
-    // If user has switched tenant, use that.
-    const effectiveTenantId = isMultiTenantUser && selectedFirmId ? selectedFirmId : user.tenantId;
+    const effectiveTenantId = user.tenantId || 'vast-canvas';
 
     unsubscribeProjects = subscribeToProjects((firebaseProjects) => {
       setProjects(firebaseProjects || []);
@@ -435,8 +470,7 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
     if (!user || user.role !== Role.ADMIN) return;
     if (isAutoSeedingDemo) return;
 
-    const hasMultipleTenants = availableTenants.length > 1;
-    const effectiveTenantId = hasMultipleTenants && selectedFirmId ? selectedFirmId : user.tenantId;
+    const effectiveTenantId = user.tenantId || 'vast-canvas';
     if (!effectiveTenantId) return;
     if (projects.length > 0) return;
 
@@ -469,7 +503,7 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [user, projects.length, availableTenants.length, selectedFirmId, isAutoSeedingDemo]);
+  }, [user, projects.length, isAutoSeedingDemo]);
 
   // Apply pending deep-link after projects or realTimeTasks update
   useEffect(() => {
@@ -782,10 +816,10 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
 
             <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-semibold text-gray-900">{user.name}</p>
-                <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+                <p className="text-sm font-semibold text-gray-900">{profileDisplayData?.name}</p>
+                <p className="text-xs text-gray-500 capitalize">{profileDisplayData?.role}</p>
               </div>
-              <AvatarCircle avatar={user.avatar} name={user.name} size="sm" role={String(user.role).toLowerCase()} />
+              <AvatarCircle avatar={profileDisplayData?.avatar} name={profileDisplayData?.name || 'User'} size="sm" role={String(profileDisplayData?.role || '').toLowerCase()} />
             </div>
           </div>
         </header>
@@ -1127,23 +1161,34 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
                             <div className="grid grid-cols-2 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 font-semibold">Name</p>
-                                <p className="text-gray-900 font-medium">{user.name}</p>
+                                <p className="text-gray-900 font-medium">{profileDisplayData?.name}</p>
                               </div>
                               <div>
                                 <p className="text-xs text-gray-500 font-semibold">Email</p>
-                                <p className="text-gray-900 font-medium">{user.email}</p>
+                                <p className="text-gray-900 font-medium">{profileDisplayData?.email}</p>
                               </div>
                               <div>
                                 <p className="text-xs text-gray-500 font-semibold">Role</p>
-                                <p className="text-gray-900 font-medium capitalize">{user.role}</p>
+                                <p className="text-gray-900 font-medium capitalize">{profileDisplayData?.role}</p>
                               </div>
-                              {user.phone && (
+                              {profileDisplayData?.phone && (
                                 <div>
                                   <p className="text-xs text-gray-500 font-semibold">Phone</p>
-                                  <p className="text-gray-900 font-medium">{user.phone}</p>
+                                  <p className="text-gray-900 font-medium">{profileDisplayData.phone}</p>
                                 </div>
                               )}
                             </div>
+                            {user.role === Role.ADMIN && (
+                              <div className="pt-2">
+                                <button
+                                  onClick={handleReloadDummyData}
+                                  disabled={isReloadingDummyData}
+                                  className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  {isReloadingDummyData ? 'Reloading Dummy Data...' : 'Reload Dummy Data'}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
 

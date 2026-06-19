@@ -120,6 +120,61 @@ export const createDemoProject = (): Omit<Project, 'id'> => {
       notes: 'Presented 5 logo variations. Client feedback on color palette preferences and refinements needed.',
       type: 'Progress',
       comments: []
+    },
+    {
+      id: 'chat-1',
+      date: new Date(startDate.getTime() + 4 * 24 * 60 * 60 * 1000).toISOString(),
+      title: 'Client + Lead Designer Direct Chat',
+      attendees: ['client-1', 'designer-1'],
+      notes: 'Direct thread for quick design clarifications.',
+      type: 'direct-chat',
+      comments: [
+        {
+          id: 'chat-1-msg-1',
+          userId: 'client-1',
+          userName: 'Client Contact',
+          text: 'Can we explore a softer accent color for social creatives?',
+          timestamp: new Date(startDate.getTime() + 4.2 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          id: 'chat-1-msg-2',
+          userId: 'designer-1',
+          userName: 'Sarah Designer',
+          text: 'Absolutely. I will share two alternate palettes by evening.',
+          timestamp: new Date(startDate.getTime() + 4.25 * 24 * 60 * 60 * 1000).toISOString(),
+        }
+      ]
+    },
+    {
+      id: 'chat-2',
+      date: new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      title: 'Branding Project Group',
+      attendees: ['admin-1', 'designer-1', 'designer-2', 'client-1'],
+      notes: 'Group thread for milestones, approvals, and delivery updates.',
+      type: 'group-chat',
+      comments: [
+        {
+          id: 'chat-2-msg-1',
+          userId: 'admin-1',
+          userName: 'Admin User',
+          text: 'Team, we are targeting final identity approval by Friday.',
+          timestamp: new Date(startDate.getTime() + 7.05 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          id: 'chat-2-msg-2',
+          userId: 'designer-2',
+          userName: 'Mike Creative',
+          text: 'Collateral drafts are 60% ready. I will upload by tomorrow noon.',
+          timestamp: new Date(startDate.getTime() + 7.15 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          id: 'chat-2-msg-3',
+          userId: 'client-1',
+          userName: 'Client Contact',
+          text: 'Perfect, sharing stakeholder comments after internal review.',
+          timestamp: new Date(startDate.getTime() + 7.2 * 24 * 60 * 60 * 1000).toISOString(),
+        }
+      ]
     }
   ];
 
@@ -189,6 +244,49 @@ export const createDemoProject = (): Omit<Project, 'id'> => {
           timestamp: new Date(startDate.getTime() + 5.5 * 24 * 60 * 60 * 1000).toISOString(),
         }
       ]
+    },
+    {
+      id: 'doc-3',
+      name: 'Social Media Key Visual - Option A.png',
+      type: 'image',
+      url: '/demo-gallery/social-key-visual-a.svg',
+      uploadedBy: 'designer-2',
+      uploadDate: formatDate(new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000)),
+      sharedWith: ['admin-1', 'client-1', 'designer-1', 'designer-2'],
+      approvalStatus: 'approved',
+      approvedBy: 'admin-1',
+      approvalDate: formatDate(new Date(startDate.getTime() + 7.25 * 24 * 60 * 60 * 1000)),
+      comments: [
+        {
+          id: 'doc-comment-2',
+          userId: 'admin-1',
+          userName: 'Admin User',
+          text: 'Looks strong for campaign launch. Please prepare resized exports.',
+          timestamp: new Date(startDate.getTime() + 7.3 * 24 * 60 * 60 * 1000).toISOString(),
+        }
+      ]
+    },
+    {
+      id: 'doc-4',
+      name: 'Moodboard Exploration.jpg',
+      type: 'image',
+      url: '/demo-gallery/moodboard-exploration.svg',
+      uploadedBy: 'designer-1',
+      uploadDate: formatDate(new Date(startDate.getTime() + 8 * 24 * 60 * 60 * 1000)),
+      sharedWith: ['admin-1', 'client-1', 'designer-1', 'designer-2'],
+      approvalStatus: 'pending',
+      comments: []
+    },
+    {
+      id: 'doc-5',
+      name: 'Packaging Dieline Preview.svg',
+      type: 'image',
+      url: '/demo-gallery/packaging-dieline-preview.svg',
+      uploadedBy: 'designer-2',
+      uploadDate: formatDate(new Date(startDate.getTime() + 9 * 24 * 60 * 60 * 1000)),
+      sharedWith: ['admin-1', 'designer-2'],
+      approvalStatus: 'pending',
+      comments: []
     }
   ];
 
@@ -313,7 +411,12 @@ export const createDemoProjects = (): Omit<Project, 'id'>[] => {
   webProject.meetings = webProject.meetings.map((meeting, index) => ({
     ...meeting,
     id: `web-meeting-${index + 1}`,
-    title: index === 0 ? 'Website Discovery Kickoff' : 'Homepage Review Session'
+    title:
+      index === 0
+        ? 'Website Discovery Kickoff'
+        : index === 1
+          ? 'Homepage Review Session'
+          : meeting.title
   }));
   webProject.financials = webProject.financials.map((financial, index) => ({
     ...financial,
@@ -326,7 +429,12 @@ export const createDemoProjects = (): Omit<Project, 'id'>[] => {
   webProject.documents = webProject.documents.map((document, index) => ({
     ...document,
     id: `web-doc-${index + 1}`,
-    name: index === 0 ? 'Website Sitemap & Wireframes.pdf' : 'Homepage Concepts - Round 1.pdf'
+    name:
+      index === 0
+        ? 'Website Sitemap & Wireframes.pdf'
+        : index === 1
+          ? 'Homepage Concepts - Round 1.pdf'
+          : document.name
   }));
   webProject.activityLog = webProject.activityLog.map((activity, index) => ({
     ...activity,
@@ -373,7 +481,12 @@ export const createDemoProjects = (): Omit<Project, 'id'>[] => {
   packagingProject.meetings = packagingProject.meetings.map((meeting, index) => ({
     ...meeting,
     id: `pkg-meeting-${index + 1}`,
-    title: index === 0 ? 'Packaging Discovery Workshop' : 'Material & Cost Review'
+    title:
+      index === 0
+        ? 'Packaging Discovery Workshop'
+        : index === 1
+          ? 'Material & Cost Review'
+          : meeting.title
   }));
   packagingProject.financials = packagingProject.financials.map((financial, index) => ({
     ...financial,
@@ -386,7 +499,12 @@ export const createDemoProjects = (): Omit<Project, 'id'>[] => {
   packagingProject.documents = packagingProject.documents.map((document, index) => ({
     ...document,
     id: `pkg-doc-${index + 1}`,
-    name: index === 0 ? 'Packaging Research Deck.pdf' : 'Packaging Concepts - Round 1.pdf'
+    name:
+      index === 0
+        ? 'Packaging Research Deck.pdf'
+        : index === 1
+          ? 'Packaging Concepts - Round 1.pdf'
+          : document.name
   }));
   packagingProject.activityLog = packagingProject.activityLog.map((activity, index) => ({
     ...activity,
