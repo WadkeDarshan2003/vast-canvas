@@ -1,6 +1,41 @@
 @import "tailwindcss";
 
-/* Global overrides for small-screen tweaks */
+/* ═══════════════════════════════════════════════
+   1. GLOBAL MOBILE FOUNDATION
+   ═══════════════════════════════════════════════ */
+
+/* Safe area insets for notched phones (iPhone X+, Android punch-holes) */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+/* Prevent horizontal overflow globally on mobile */
+html, body {
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth scrolling on iOS */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent zoom on input focus (iOS Safari) */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   2. MOBILE LAYOUT OVERRIDES
+   ═══════════════════════════════════════════════ */
+
+/* Global small-screen tweaks */
 @media (max-width: 640px) {
   /* Slightly increase font-size for elements marked with .mobile-increase on mobile */
   .mobile-increase {
@@ -17,15 +52,192 @@
   [data-section="active-projects"] .mobile-card .p-4 {
     padding: 1rem !important;
   }
-  /* Slightly narrow project cards on larger screens for denser layout */
-  @media (min-width: 1024px) {
-    .desktop-narrow {
-      max-width: 520px;
-      margin-left: auto;
-      margin-right: auto;
-    }
+}
+
+/* Slightly narrow project cards on larger screens for denser layout */
+@media (min-width: 1024px) {
+  .desktop-narrow {
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
   }
 }
+
+/* ═══════════════════════════════════════════════
+   3. BOTTOM NAVIGATION - MOBILE
+   ═══════════════════════════════════════════════ */
+
+/* Bottom nav safe area for notched phones */
+.mobile-bottom-nav {
+  padding-bottom: calc(var(--sab) + 4px);
+  /* Frosted glass effect */
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* Active nav item indicator */
+.mobile-nav-item-active {
+  color: #111827;
+  background: rgba(0, 0, 0, 0.06);
+  position: relative;
+}
+
+.mobile-nav-item-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 3px;
+  background: #111827;
+  border-radius: 0 0 4px 4px;
+}
+
+/* ═══════════════════════════════════════════════
+   4. MOBILE HEADER
+   ═══════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .mobile-header {
+    padding-top: var(--sat);
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   5. MOBILE MODALS & OVERLAYS
+   ═══════════════════════════════════════════════ */
+
+/* Standardized modals on mobile to appear as pop-ups */
+@media (max-width: 640px) {
+  .modal-mobile-fullscreen, .modal-mobile-sheet {
+    max-width: calc(100% - 2rem) !important;
+    max-height: 90vh !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: auto !important;
+    border-radius: 1rem !important;
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   6. MOBILE PROJECT CARDS
+   ═══════════════════════════════════════════════ */
+
+@media (max-width: 640px) {
+  /* Smaller image height on mobile */
+  .project-card-media {
+    height: 180px !important;
+  }
+  
+  /* Reduce overlapping offset on mobile */
+  .project-card-content-mobile {
+    margin-top: -2rem !important;
+    margin-left: 0.5rem !important;
+    margin-right: 0.5rem !important;
+    padding: 1rem !important;
+  }
+
+  /* Smaller badges on mobile */
+  .project-card .backdrop-blur-xl {
+    font-size: 8px !important;
+    padding: 4px 10px !important;
+  }
+}
+
+/* Very small phones (iPhone SE, Galaxy S series mini) */
+@media (max-width: 375px) {
+  .project-card-media {
+    height: 150px !important;
+  }
+  
+  .project-card-content-mobile {
+    margin-top: -1.5rem !important;
+    padding: 0.75rem !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   7. MOBILE SETTINGS PAGE
+   ═══════════════════════════════════════════════ */
+
+@media (max-width: 640px) {
+  .settings-grid-mobile {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   8. MOBILE DASHBOARD
+   ═══════════════════════════════════════════════ */
+
+@media (max-width: 640px) {
+  .dashboard-hero-mobile {
+    padding: 1rem !important;
+  }
+  
+  .dashboard-hero-mobile h2 {
+    font-size: 1.375rem !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   9. MOBILE NOTIFICATION PANEL
+   ═══════════════════════════════════════════════ */
+
+@media (max-width: 640px) {
+  .notification-panel-mobile {
+    position: fixed !important;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 1.5rem 1.5rem 0 0 !important;
+    max-height: 70vh !important;
+    transform: none !important;
+    padding-bottom: var(--sab);
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   10. TOUCH TARGETS
+   ═══════════════════════════════════════════════ */
+
+/* Ensure minimum 44px touch targets on mobile (WCAG AAA) */
+@media (max-width: 768px) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  button, a, [role="button"] {
+    min-height: 36px;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   11. MOBILE FILTER BAR
+   ═══════════════════════════════════════════════ */
+
+@media (max-width: 640px) {
+  .filter-bar-mobile select {
+    min-height: 40px;
+    font-size: 14px !important;
+  }
+  
+  .filter-bar-mobile input {
+    min-height: 40px;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   EXISTING STYLES (PRESERVED)
+   ═══════════════════════════════════════════════ */
 
 /* Spinner loader for buttons */
 .spinner {
@@ -288,4 +500,50 @@
 .projects-surface .project-card:hover .project-card-content {
   box-shadow: var(--project-card-content-shadow-hover);
   transform: translateY(-2px);
+}
+
+/* ═══════════════════════════════════════════════
+   12. LANDSCAPE MOBILE ORIENTATION
+   ═══════════════════════════════════════════════ */
+
+@media (max-height: 500px) and (orientation: landscape) {
+  /* Compact bottom nav in landscape */
+  .mobile-bottom-nav {
+    height: auto !important;
+    padding-top: 4px;
+    padding-bottom: calc(var(--sab) + 2px);
+  }
+  
+  .mobile-bottom-nav .mobile-nav-label {
+    display: none !important;
+  }
+  
+  /* Reduce main content padding */
+  main {
+    padding-bottom: 48px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   13. FOLDABLE / ULTRA-WIDE MOBILE
+   ═══════════════════════════════════════════════ */
+
+@media (min-width: 641px) and (max-width: 1023px) {
+  /* Tablet-ish: 2 column cards */
+  .project-grid-responsive {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   14. REDUCED MOTION
+   ═══════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

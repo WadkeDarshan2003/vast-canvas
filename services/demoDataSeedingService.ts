@@ -11,6 +11,7 @@ import { db, functions } from './firebaseConfig';
 import { Role, Timeline } from '../types';
 import { createDemoUsers } from './demoUsersService';
 import { createDemoProjects } from './demoProjectService';
+import { getTemplatesFromDB } from './templateService';
 
 type SeedOptions = {
   replaceExisting?: boolean;
@@ -153,7 +154,23 @@ export async function seedDemoData(
     }
 
     const now = new Date().toISOString();
-    const demoUsers = createDemoUsers(tenantId);
+    
+    // Attempt to get templates from DB first
+    let { users: demoUsers, projects: demoProjects } = await getTemplatesFromDB();
+    
+    // Fallback to local services if DB templates are missing
+    if (demoUsers.length === 0) {
+      console.log('⚠️ No templates found in DB, falling back to local demo services');
+      demoUsers = createDemoUsers(tenantId);
+    } else {
+      // Re-map tenantId for templates from DB
+      demoUsers = demoUsers.map(u => ({ ...u, tenantId }));
+    }
+
+    if (demoProjects.length === 0) {
+      demoProjects = createDemoProjects();
+    }
+
     const demoUserIds: string[] = [];
 
     // Seed demo users
@@ -187,7 +204,6 @@ export async function seedDemoData(
 
     // Seed demo projects
     console.log('📋 Seeding demo projects...');
-    const demoProjects = createDemoProjects();
     const demoProjectIds: string[] = [];
     const userIdMap: Record<string, string> = {
       'admin-1': demoUserIds[0],

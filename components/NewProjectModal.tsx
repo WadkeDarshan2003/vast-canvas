@@ -9,6 +9,8 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { createDocument, logTimelineEvent } from '../services/projectDetailsService';
 import { formatDateToIndian, formatIndianToISO } from '../utils/taskUtils';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
+import { getPackages } from '../services/packageService';
+import { Package } from '../types';
 import ConfirmDialog from './ConfirmDialog';
 
 interface NewProjectModalProps {
@@ -17,11 +19,12 @@ interface NewProjectModalProps {
   onSave: (project: Project) => void;
   initialProject?: Project | null;
   selectedFirmId?: string | null;
+  isPlanMode?: boolean;
 }
 
 type TabType = 'basic' | 'designers' | 'client' | 'media';
 
-const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSave, initialProject }) => {
+const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSave, initialProject, isPlanMode = false }) => {
   const { addNotification } = useNotifications();
   const { user } = useAuth();
   const { createNewProject, updateExistingProject } = useProjectCrud();
@@ -40,6 +43,8 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
     description: initialProject.description,
     packageType: initialProject.packageType,
     budget: initialProject.budget,
+    discountAmount: (initialProject as any).discountAmount,
+    discountPercent: (initialProject as any).discountPercent,
     startDate: initialProject.startDate,
     deadline: initialProject.deadline,
     clientId: initialProject.clientId,
@@ -56,13 +61,15 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
     type: ProjectType.DESIGNING,
     category: ProjectCategory.COMMERCIAL,
     description: '',
-    packageType: undefined,
+    packageType: isPlanMode ? ProjectPackage.PACKAGE_50 : undefined,
     budget: undefined,
+    discountAmount: undefined,
+    discountPercent: undefined,
     startDate: today,
     deadline: today,
     clientId: '',
     clientIds: [],
-    leadDesignerId: '',
+    leadDesignerId: user?.role === Role.DESIGNER ? user.id : '',
     designerRequirements: '',
     requiredSkills: [],
     clientPreferences: undefined
@@ -71,10 +78,58 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
   const [formData, setFormData] = useState<Partial<Project>>(initialFormData);
   const [showErrors, setShowErrors] = useState(false);
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
+  const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null);
   const [uploadedDocuments, setUploadedDocuments] = useState<{file: File, name: string}[]>([]);
+  const [documentPreviews, setDocumentPreviews] = useState<Record<string, string>>({});
   const [newSkill, setNewSkill] = useState('');
+  const [availablePackages, setAvailablePackages] = useState<Package[]>([]);
   const coverImageInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const fetchPackages = async () => {
+      const pkgs = await getPackages(user?.tenantId);
+      setAvailablePackages(pkgs);
+    };
+    fetchPackages();
+  }, [user?.tenantId]);
+
+  // If a packageType is pre-selected (plan mode) and package data is available, auto-fill budget
+  useEffect(() => {
+    if (formData.packageType && availablePackages.length > 0) {
+      const pkg = availablePackages.find(p => p.type === formData.packageType);
+      if (pkg && (formData.budget === undefined || formData.budget === null)) {
+        setFormData(prev => ({ ...prev, budget: pkg.price }));
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availablePackages, formData.packageType]);
+
+  // When a package is selected, auto-fill budget from package price (if available)
+  const handlePackageSelect = (packageType?: ProjectPackage) => {
+    setFormData(prev => {
+      const pkg = availablePackages.find(p => p.type === packageType);
+      const price = pkg?.price ?? prev.budget ?? undefined;
+      return { ...prev, packageType, budget: price };
+    });
+  };
+
+  // Discount helpers: keep amount and percent in sync
+  const handleDiscountPercentChange = (percent?: number) => {
+    setFormData(prev => {
+      const budget = Number(prev.budget) || 0;
+      const discountAmount = percent && budget ? Math.round((percent / 100) * budget) : undefined;
+      return { ...prev, discountPercent: percent, discountAmount };
+    });
+  };
+
+  const handleDiscountAmountChange = (amount?: number) => {
+    setFormData(prev => {
+      const budget = Number(prev.budget) || 0;
+      const discountPercent = amount && budget ? Math.round((amount / budget) * 100) : undefined;
+      return { ...prev, discountAmount: amount, discountPercent };
+    });
+  };
 
   const { hasUnsavedChanges, resetChanges } = useUnsavedChanges(initialFormData, formData);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -92,6 +147,12 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
       return false;
     }
     
+    // If in plan mode, must have a package type
+    if (isPlanMode && !formData.packageType) {
+      addNotification('Validation Error', 'Please select a package type.', 'error');
+      return false;
+    }
+
     if (!/^\d{4}-\d{2}-\d{2}$/.test(formData.startDate || '')) {
       addNotification('Invalid Date', 'Start date must be valid.', 'error');
       return false;
@@ -139,15 +200,35 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
   };
 
   const handleAddDocument = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setUploadedDocuments(prev => [...prev, { file, name: file.name }]);
+    const files = e.target.files;
+    if (files) {
+      const newDocs: {file: File, name: string}[] = [];
+      
+      Array.from(files).forEach(file => {
+        newDocs.push({ file, name: file.name });
+        if (file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            setDocumentPreviews(prev => ({ ...prev, [file.name]: reader.result as string }));
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+      setUploadedDocuments(prev => [...prev, ...newDocs]);
       if (documentInputRef.current) documentInputRef.current.value = '';
     }
   };
 
   const handleRemoveDocument = (index: number) => {
+    const removedDoc = uploadedDocuments[index];
     setUploadedDocuments(prev => prev.filter((_, i) => i !== index));
+    if (removedDoc) {
+      setDocumentPreviews(prev => {
+        const next = { ...prev };
+        delete next[removedDoc.name];
+        return next;
+      });
+    }
   };
 
   const handleCoverImage = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,6 +239,9 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
         return;
       }
       setCoverImageFile(file);
+      const reader = new FileReader();
+      reader.onload = () => setCoverImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
       if (coverImageInputRef.current) coverImageInputRef.current.value = '';
     }
   };
@@ -169,6 +253,9 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
     setIsSubmitting(true);
     try {
       const selectedClients = formData.clientIds && formData.clientIds.length > 0 ? formData.clientIds : (formData.clientId ? [formData.clientId] : []);
+      const resolvedPackageType = isPlanMode
+        ? (formData.packageType as ProjectPackage | undefined)
+        : ('Custom Plan' as any);
       
       const projectData: Partial<Project> = {
         name: formData.name!,
@@ -179,10 +266,12 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
         status: formData.status || ProjectStatus.DISCOVERY,
         type: formData.type as ProjectType,
         category: formData.category as ProjectCategory,
-        packageType: formData.packageType as ProjectPackage | undefined,
+        packageType: resolvedPackageType,
         startDate: formData.startDate!,
         deadline: formData.deadline!,
         budget: formData.budget ? Number(formData.budget) : 0,
+        discountAmount: formData.discountAmount !== undefined ? Number(formData.discountAmount) : undefined,
+        discountPercent: formData.discountPercent !== undefined ? Number(formData.discountPercent) : undefined,
         description: formData.description || '',
         designerRequirements: formData.designerRequirements || '',
         requiredSkills: formData.requiredSkills || [],
@@ -309,10 +398,10 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[400] flex items-center justify-center p-4 animate-fade-in">
+      <div className="bg-white shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col rounded-2xl overflow-hidden">
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 px-6 py-4 flex items-center justify-between border-b border-gray-700">
+        <div className="sticky top-0 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 px-6 py-4 flex items-center justify-between border-b border-gray-700 rounded-t-2xl">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center">
               <Layers className="w-6 h-6 text-white" />
@@ -328,7 +417,7 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 px-6 pt-4 border-b border-gray-200 sticky top-16 bg-white">
+        <div className="flex gap-1 px-4 md:px-6 pt-4 border-b border-gray-200 sticky top-16 bg-white overflow-x-auto scrollbar-hide">
           {[
             { id: 'basic' as TabType, label: 'Basic Info', icon: Zap },
             { id: 'designers' as TabType, label: 'Designers', icon: Users },
@@ -340,7 +429,7 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium transition ${
+                className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium transition whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'border-blue-600 text-blue-600'
                     : 'border-transparent text-gray-600 hover:text-gray-900'
@@ -359,7 +448,7 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
             {/* Basic Info Tab */}
             {activeTab === 'basic' && (
               <div className="space-y-5">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-900 mb-2">
                       Project Name <span className="text-red-500">*</span>
@@ -390,23 +479,38 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-900 mb-2">
-                      Package / Creatives
-                    </label>
-                    <select
-                      value={formData.packageType || ''}
-                      onChange={(e) => setFormData(prev => ({ ...prev, packageType: (e.target.value as ProjectPackage) || undefined }))}
-                      className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 bg-gray-50 focus:outline-none focus:border-blue-500"
-                    >
-                      <option value="">None / Custom</option>
-                      {Object.values(ProjectPackage).map(pkg => (
-                        <option key={pkg} value={pkg}>{pkg}</option>
-                      ))}
-                    </select>
+                {isPlanMode && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        Plan Package <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={formData.packageType || ''}
+                        onChange={(e) => handlePackageSelect((e.target.value as ProjectPackage) || undefined)}
+                        className={`w-full px-4 py-2 rounded-lg border-2 transition focus:outline-none ${
+                          showErrors && !formData.packageType ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50 focus:border-blue-500'
+                        }`}
+                      >
+                        <option value="">Select a Plan...</option>
+                        {availablePackages.length > 0 ? (
+                          availablePackages.map(pkg => (
+                            <option key={pkg.id} value={pkg.type}>{pkg.name} ({pkg.creativeQuota} Creatives)</option>
+                          ))
+                        ) : (
+                          [
+                            { label: 'Starter Plan (20 Creatives)', value: ProjectPackage.PACKAGE_50 },
+                            { label: 'Growth Plan (50 Creatives)', value: ProjectPackage.PACKAGE_100 },
+                            { label: 'Business Plan (100 Creatives)', value: ProjectPackage.PACKAGE_200 },
+                            { label: 'Impact Plan (200 Creatives)', value: ProjectPackage.IMPACT },
+                          ].map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))
+                        )}
+                      </select>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-2">Description</label>
@@ -419,7 +523,7 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-900 mb-2">
                       Start Date <span className="text-red-500">*</span>
@@ -459,7 +563,35 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                {isPlanMode && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">Discount (%)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={(formData.discountPercent ?? '') as any}
+                        onChange={(e) => handleDiscountPercentChange(e.target.value ? Number(e.target.value) : undefined)}
+                        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 bg-gray-50 focus:outline-none focus:border-blue-500"
+                        placeholder="e.g., 10"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">Discount Amount (₹)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={(formData.discountAmount ?? '') as any}
+                        onChange={(e) => handleDiscountAmountChange(e.target.value ? Number(e.target.value) : undefined)}
+                        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 bg-gray-50 focus:outline-none focus:border-blue-500"
+                        placeholder="e.g., 2000"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-900 mb-2">
                       Client <span className="text-red-500">*</span>
@@ -655,7 +787,7 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
               <div className="space-y-5">
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-2">Project Cover Image</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition cursor-pointer">
+                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:border-blue-400 transition cursor-pointer relative overflow-hidden bg-gray-50/50">
                     <input
                       type="file"
                       ref={coverImageInputRef}
@@ -663,17 +795,49 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
                       accept="image/*"
                       className="hidden"
                     />
-                    <button
-                      type="button"
-                      onClick={() => coverImageInputRef.current?.click()}
-                      className="flex flex-col items-center gap-2 w-full"
-                    >
-                      <ImageIcon className="w-8 h-8 text-gray-400" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-700">Click to upload image</p>
-                        <p className="text-xs text-gray-500 mt-1">Max 5MB</p>
+                    {coverImagePreview ? (
+                      <div className="relative group aspect-video rounded-lg overflow-hidden">
+                        <img 
+                          src={coverImagePreview} 
+                          alt="Cover preview" 
+                          className="w-full h-full object-cover" 
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => coverImageInputRef.current?.click()}
+                            className="p-2 bg-white rounded-full text-blue-600 hover:scale-110 transition"
+                          >
+                            <Upload className="w-5 h-5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCoverImageFile(null);
+                              setCoverImagePreview(null);
+                            }}
+                            className="p-2 bg-white rounded-full text-red-600 hover:scale-110 transition"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
                       </div>
-                    </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => coverImageInputRef.current?.click()}
+                        className="flex flex-col items-center gap-2 w-full py-6"
+                      >
+                        <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
+                          <ImageIcon className="w-6 h-6 text-blue-500" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Click to upload image</p>
+                          <p className="text-xs text-gray-500 mt-1">Recommended: 1920x1080px, Max 5MB</p>
+                        </div>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -701,16 +865,25 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
                   </div>
 
                   {uploadedDocuments.length > 0 && (
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-4 grid grid-cols-2 gap-3">
                       {uploadedDocuments.map((doc, i) => (
-                        <div key={i} className="flex items-center justify-between bg-gray-50 px-4 py-3 rounded-lg">
-                          <span className="text-sm text-gray-700 truncate">{doc.name}</span>
+                        <div key={i} className="group relative flex flex-col items-center p-3 rounded-xl bg-gray-50 border border-gray-200 hover:border-blue-300 transition">
+                          {documentPreviews[doc.name] ? (
+                            <div className="w-full aspect-square rounded-lg overflow-hidden mb-2">
+                              <img src={documentPreviews[doc.name]} alt={doc.name} className="w-full h-full object-cover" />
+                            </div>
+                          ) : (
+                            <div className="w-full aspect-square rounded-lg bg-gray-200 flex items-center justify-center mb-2">
+                              <FileText className="w-8 h-8 text-gray-400" />
+                            </div>
+                          )}
+                          <span className="text-[10px] font-medium text-gray-700 truncate w-full text-center px-1">{doc.name}</span>
                           <button
                             type="button"
                             onClick={() => handleRemoveDocument(i)}
-                            className="text-red-500 hover:text-red-700"
+                            className="absolute -top-2 -right-2 p-1.5 bg-red-100 text-red-600 rounded-full opacity-0 group-hover:opacity-100 transition shadow-sm hover:bg-red-200"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
                       ))}
@@ -723,7 +896,7 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
+        <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3 rounded-b-2xl">
           <button
             onClick={handleClose}
             className="px-6 py-2 text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition"

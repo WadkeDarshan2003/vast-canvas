@@ -121,8 +121,8 @@ const AddClient_v2: React.FC<AddClientModalProps> = ({ onClose, onSave, currentU
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[400] flex items-center justify-center p-4 animate-fade-in">
+      <div className="bg-white shadow-2xl w-full max-w-md max-h-[95vh] flex flex-col rounded-2xl overflow-hidden">
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-4 flex items-center justify-between rounded-t-2xl">
           <div className="flex items-center gap-3">
@@ -140,7 +140,8 @@ const AddClient_v2: React.FC<AddClientModalProps> = ({ onClose, onSave, currentU
         </div>
 
         {/* Content */}
-        <form onSubmit={handleCreate} className="p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto">
+          <form onSubmit={handleCreate} className="p-6 space-y-5">
           {/* Profile Photo */}
           <div className="flex flex-col items-center mb-6">
             <div
@@ -281,7 +282,8 @@ const AddClient_v2: React.FC<AddClientModalProps> = ({ onClose, onSave, currentU
               )}
             </button>
           </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import {
 import {
   FinancialRecord,
   Project,
+  Plan,
   ProjectPackage,
   ProjectDocument,
   Role,
@@ -27,11 +28,13 @@ import { useNotifications } from '../contexts/NotificationContext';
 import { subscribeToProjectTasks, subscribeToProjectDocuments } from '../services/projectDetailsService';
 import { subscribeToProjectFinancialRecords } from '../services/financialService';
 import { calculateProjectProgress, calculateTaskProgress, formatDateToIndian } from '../utils/taskUtils';
-import { seedDemoData } from '../services/demoDataSeedingService';
-import { PACKAGE_VISUALS, buildPackageCreativeSummary } from '../utils/packageUtils';
+import { PACKAGE_VISUALS, buildPackageCreativeSummary, buildPlanCreativeSummary } from '../utils/packageUtils';
+import { getPackages } from '../services/packageService';
+import { Package } from '../types';
 
 interface DashboardProps {
   projects: Project[];
+  plans: Plan[];
   users: User[];
   onSelectProject?: (project: Project, opts?: { initialTab?: 'discovery' | 'plan' | 'financials' | 'team' | 'timeline' | 'documents' | 'meetings' }) => void;
   onSelectTask?: (task: Task, project: Project) => void;
@@ -53,17 +56,26 @@ const getSafeTimestamp = (value: any): number => {
   return new Date(value).getTime() || 0;
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject, onSelectTask }) => {
+const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectProject, onSelectTask }) => {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
 
   const [realTimeTasks, setRealTimeTasks] = useState<Map<string, Task[]>>(new Map());
   const [realTimeDocuments, setRealTimeDocuments] = useState<Map<string, ProjectDocument[]>>(new Map());
   const [realTimeFinancials, setRealTimeFinancials] = useState<Map<string, FinancialRecord[]>>(new Map());
-  const [isSeedingDemoData, setIsSeedingDemoData] = useState(false);
+  const [availablePackages, setAvailablePackages] = useState<Package[]>([]);
 
   useEffect(() => {
-    if (projects.length === 0) {
+    const fetchPackages = async () => {
+      const pkgs = await getPackages(user?.tenantId);
+      setAvailablePackages(pkgs);
+    };
+    fetchPackages();
+  }, [user?.tenantId]);
+
+  useEffect(() => {
+    const allWork = [...projects, ...plans];
+    if (allWork.length === 0) {
       setRealTimeTasks(new Map());
       setRealTimeDocuments(new Map());
       setRealTimeFinancials(new Map());
@@ -72,40 +84,50 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
 
     const unsubscribers: Array<() => void> = [];
 
+    // Subscribe to projects
     projects.forEach((project) => {
       unsubscribers.push(
         subscribeToProjectTasks(project.id, (tasks) => {
-          setRealTimeTasks((prev) => {
-            const next = new Map(prev);
-            next.set(project.id, tasks || []);
-            return next;
-          });
-        })
+          setRealTimeTasks((prev) => new Map(prev).set(project.id, tasks || []));
+        }, "projects")
       );
 
       unsubscribers.push(
         subscribeToProjectDocuments(project.id, (documents) => {
-          setRealTimeDocuments((prev) => {
-            const next = new Map(prev);
-            next.set(project.id, documents || []);
-            return next;
-          });
-        })
+          setRealTimeDocuments((prev) => new Map(prev).set(project.id, documents || []));
+        }, "projects")
       );
 
       unsubscribers.push(
         subscribeToProjectFinancialRecords(project.id, (financials) => {
-          setRealTimeFinancials((prev) => {
-            const next = new Map(prev);
-            next.set(project.id, financials || []);
-            return next;
-          });
-        })
+          setRealTimeFinancials((prev) => new Map(prev).set(project.id, financials || []));
+        }, "projects")
+      );
+    });
+
+    // Subscribe to plans
+    plans.forEach((plan) => {
+      unsubscribers.push(
+        subscribeToProjectTasks(plan.id, (tasks) => {
+          setRealTimeTasks((prev) => new Map(prev).set(plan.id, tasks || []));
+        }, "plans")
+      );
+
+      unsubscribers.push(
+        subscribeToProjectDocuments(plan.id, (documents) => {
+          setRealTimeDocuments((prev) => new Map(prev).set(plan.id, documents || []));
+        }, "plans")
+      );
+
+      unsubscribers.push(
+        subscribeToProjectFinancialRecords(plan.id, (financials) => {
+          setRealTimeFinancials((prev) => new Map(prev).set(plan.id, financials || []));
+        }, "plans")
       );
     });
 
     return () => unsubscribers.forEach((unsub) => unsub());
-  }, [projects]);
+  }, [projects, plans]);
 
   if (!user) return null;
 
@@ -140,9 +162,29 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
     return [];
   }, [projects, user.id, user.role]);
 
+  const visiblePlans = useMemo(() => {
+    if (user.role === Role.ADMIN) return plans;
+
+    if (user.role === Role.DESIGNER) {
+      return plans.filter(
+        (plan) => plan.leadDesignerId === user.id || (plan.teamMembers || []).includes(user.id)
+      );
+    }
+
+    if (user.role === Role.CLIENT) {
+      return plans.filter((plan) => {
+        const allClientIds = [plan.clientId, ...(plan.clientIds || [])].filter(Boolean) as string[];
+        return allClientIds.includes(user.id);
+      });
+    }
+
+    return [];
+  }, [plans, user.id, user.role]);
+
   const openTaskItems = useMemo(() => {
-    const pool = visibleProjects.flatMap((project) =>
-      getProjectTasks(project.id).map((task) => ({ task, project }))
+    const allWork = [...visibleProjects, ...visiblePlans];
+    const pool = allWork.flatMap((project) =>
+      getProjectTasks(project.id).map((task) => ({ task, project: project as Project }))
     );
 
     const scoped = user.role === Role.DESIGNER
@@ -159,8 +201,9 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
 
   const approvalItems = useMemo(() => {
     const items: ApprovalItem[] = [];
+    const allWork = [...visibleProjects, ...visiblePlans];
 
-    visibleProjects.forEach((project) => {
+    allWork.forEach((project) => {
       const tasks = getProjectTasks(project.id);
       const documents = getProjectDocuments(project.id);
       const financials = getProjectFinancials(project.id);
@@ -242,7 +285,8 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
   }, [visibleProjects, realTimeTasks, realTimeDocuments, realTimeFinancials, user.id, user.role]);
 
   const recentProjects = useMemo(() => {
-    return [...visibleProjects]
+    const allWork = [...visibleProjects, ...visiblePlans];
+    return [...allWork]
       .sort((a, b) => {
         const aTs = Math.max(
           getSafeTimestamp(a.updatedAt),
@@ -256,7 +300,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
         );
         return bTs - aTs;
       })
-      .slice(0, 4);
+      .slice(0, 4) as Project[];
   }, [visibleProjects, realTimeTasks]);
 
   const upcomingTasks = useMemo(() => {
@@ -276,40 +320,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
     }).length;
   }, [openTaskItems]);
 
-  const handleAddDemoData = async () => {
-    if (user.role !== Role.ADMIN || isSeedingDemoData) return;
 
-    const tenantId = user.tenantId || user.id;
-    setIsSeedingDemoData(true);
-
-    try {
-      const result = await seedDemoData(tenantId, user.id, { replaceExisting: true });
-      if (result.success) {
-        addNotification({
-          title: 'Demo Data Loaded',
-          message: `${result.demoProjectIds?.length || 0} sample projects and full records are now available.`,
-          type: 'success',
-          recipientId: user.id,
-        });
-      } else {
-        addNotification({
-          title: 'Demo Data Status',
-          message: result.message,
-          type: 'warning',
-          recipientId: user.id,
-        });
-      }
-    } catch (error: any) {
-      addNotification({
-        title: 'Demo Seed Failed',
-        message: error?.message || 'Could not load sample data.',
-        type: 'error',
-        recipientId: user.id,
-      });
-    } finally {
-      setIsSeedingDemoData(false);
-    }
-  };
 
   const openApprovalItem = (item: ApprovalItem) => {
     if (item.type === 'task' && item.task) {
@@ -325,18 +336,23 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
     onSelectProject?.(item.project, { initialTab: 'financials' });
   };
 
-  const totalProjects = visibleProjects.length;
+  const totalWorkCount = visibleProjects.length + visiblePlans.length;
   const openTasks = openTaskItems.length;
   const pendingApprovals = approvalItems.length;
   const avgProgress =
-    totalProjects === 0
+    totalWorkCount === 0
       ? 0
       : Math.round(
-          visibleProjects.reduce((sum, project) => sum + calculateProjectProgress(getProjectTasks(project.id)), 0) /
-            totalProjects
+          [...visibleProjects, ...visiblePlans].reduce((sum, project) => sum + calculateProjectProgress(getProjectTasks(project.id)), 0) /
+            totalWorkCount
         );
 
-  const packageCreativeSummary = useMemo(() => buildPackageCreativeSummary(visibleProjects), [visibleProjects]);
+  const packageCreativeSummary = useMemo(() => {
+    // Sync creative counts from both plans and regular projects that have a package assigned
+    const projectsWithPackage = visibleProjects.filter(p => !!p.packageType);
+    const combinedPlans = [...(projectsWithPackage as any[]), ...visiblePlans];
+    return buildPlanCreativeSummary(combinedPlans, availablePackages);
+  }, [visibleProjects, visiblePlans, availablePackages]);
 
   const dashboardPackagePalette: Record<
     ProjectPackage,
@@ -372,7 +388,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
       value: '#3CB89F',
       meta: '#0F766E',
     },
-    [ProjectPackage.CUSTOM]: {
+    [ProjectPackage.IMPACT]: {
       // Impact plan deep blue
       cardBg: '#F0F4FB',
       border: '#2E4A7E',
@@ -397,18 +413,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {user.role === Role.ADMIN && (
-              <button
-                onClick={handleAddDemoData}
-                disabled={isSeedingDemoData}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white text-slate-800 text-sm font-semibold hover:bg-slate-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                title="Load full sample data"
-              >
-                <RefreshCw className={`w-4 h-4 ${isSeedingDemoData ? 'animate-spin' : ''}`} />
-                {isSeedingDemoData ? 'Loading Sample Data...' : 'Load Sample Data'}
-              </button>
-            )}
+          <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 w-full lg:w-auto">
             <span className="px-4 py-2 rounded-full border border-slate-500 text-slate-100 text-sm">
               {new Date().toLocaleDateString('en-IN', {
                 weekday: 'short',
@@ -424,10 +429,10 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm dashboard-card">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Projects</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total Work items</p>
             <Briefcase className="w-4 h-4 text-blue-500" />
           </div>
-          <p className="text-3xl font-bold text-gray-900 mt-3">{totalProjects}</p>
+          <p className="text-3xl font-bold text-gray-900 mt-3">{totalWorkCount}</p>
         </div>
 
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm dashboard-card">
@@ -457,9 +462,9 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
 
       <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 dashboard-card">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h3 className="text-base font-bold text-gray-900">Package Creative Counts</h3>
+          <h3 className="text-base font-bold text-gray-900">Package Project Counts</h3>
           <span className="text-xs font-semibold text-gray-500">
-            {packageCreativeSummary.totalCommittedCreatives} creatives committed
+            {packageCreativeSummary.totalProjectCount} projects assigned
           </span>
         </div>
 
@@ -489,22 +494,15 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, users, onSelectProject,
                   className="text-2xl font-bold mt-2"
                   style={{ color: palette.value }}
                 >
-                  {item.committedCreatives}
+                  {item.projectCount}
                 </p>
                 <p className="text-xs mt-1" style={{ color: palette.meta }}>
-                  {item.projectCount} project{item.projectCount === 1 ? '' : 's'} · {perProjectLabel}
+                  project{item.projectCount === 1 ? '' : 's'} · {perProjectLabel}
                 </p>
               </div>
             );
           })}
         </div>
-
-        {packageCreativeSummary.unassignedProjects > 0 && (
-          <p className="mt-4 text-xs text-gray-500">
-            {packageCreativeSummary.unassignedProjects} project
-            {packageCreativeSummary.unassignedProjects === 1 ? '' : 's'} do not have a package selected yet.
-          </p>
-        )}
       </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-3 gap-6">

@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Palette, LogOut, Bell, X, Tag, Edit, Trash2, Building2, ChevronLeft, Clock
+  Palette, LogOut, Bell, X, Tag, Edit, Trash2, Building2, ChevronLeft, Clock, Layers, Settings
 } from 'lucide-react';
-import { FaPaintBrush, FaRegAddressCard, FaRegCompass, FaRegFolderOpen, FaSlidersH, FaUserShield } from 'react-icons/fa';
+import { FaPaintBrush, FaRegAddressCard, FaRegCompass, FaRegFolderOpen, FaUserShield } from 'react-icons/fa';
 import { MOCK_PROJECTS, MOCK_USERS } from './constants';
-import { Project, Role, User, ProjectStatus, ProjectType, ProjectCategory, Task } from './types';
+import { Project, Plan, Role, User, ProjectStatus, ProjectType, ProjectCategory, Task } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
 import { LoadingProvider } from './contexts/LoadingContext';
-import { subscribeToProjects, subscribeToUserProjects, subscribeToUsers, subscribeToDesigners, subscribeToClients, seedDatabase, updateProject, deleteProject } from './services/firebaseService';
+import { subscribeToProjects, subscribeToUserProjects, subscribeToUsers, subscribeToDesigners, subscribeToClients, seedDatabase, updateProject, deleteProject, subscribeToPlans, subscribeToUserPlans } from './services/firebaseService';
 import { seedDemoData } from './services/demoDataSeedingService';
+import { migrateAllDemoData } from './services/templateService';
 import { subscribeToProjectTasks } from './services/projectDetailsService';
 import { requestNotificationPermission, onMessageListener } from './services/pushNotificationService';
 import { AvatarCircle } from './utils/avatarUtils';
@@ -27,6 +28,7 @@ import Loader from './components/Loader';
 import RememberedDevices from './components/RememberedDevices';
 import SessionExpiryWarning from './components/SessionExpiryWarning';
 import BrandingSettings from './components/BrandingSettings';
+import ConfirmDialog from './components/ConfirmDialog';
 // import FirmSettings from './components/FirmSettings'; // COMMENTED OUT: Cross-firm support disabled
 import { PageTitleUpdater } from './components/PageTitleUpdater';
 import { useTenantBranding } from './hooks/useTenantBranding';
@@ -42,7 +44,7 @@ const ProjectList = ({
   user,
   setEditingProject,
   setIsNewProjectModalOpen,
-  onDeleteProject,
+  onRequestDelete,
   realTimeTasks
 }: {
   projects: Project[],
@@ -50,7 +52,7 @@ const ProjectList = ({
   user: User | null,
   setEditingProject: (project: Project | null) => void,
   setIsNewProjectModalOpen: (open: boolean) => void,
-  onDeleteProject: (project: Project) => void,
+  onRequestDelete: (project: Project) => void,
   realTimeTasks: Map<string, Task[]>
 }) => {
   const [imageLoading, setImageLoading] = useState<Record<string, boolean>>({});
@@ -190,12 +192,10 @@ const ProjectList = ({
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button
+                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (window.confirm(`Are you sure you want to delete project "${project.name}"? This action cannot be undone.`)) {
-                                onDeleteProject(project);
-                              }
+                              onRequestDelete(project);
                             }}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                             title="Delete project"
@@ -223,11 +223,13 @@ const ProjectList = ({
   );
 };
 
-type ViewState = 'dashboard' | 'projects' | 'clients' | 'designers' | 'admins' | 'settings' | 'scheduler';
+
+type ViewState = 'dashboard' | 'projects' | 'plans' | 'clients' | 'designers' | 'admins' | 'settings' | 'scheduler';
 
 function App() {
   // Lifted state to allow NotificationProvider access to projects
   const [projects, setProjects] = useState<Project[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
   return (
@@ -237,6 +239,8 @@ function App() {
           <AppContent
             projects={projects}
             setProjects={setProjects}
+            plans={plans}
+            setPlans={setPlans}
             users={users}
             setUsers={setUsers}
           />
@@ -249,11 +253,13 @@ function App() {
 interface AppContentProps {
   projects: Project[];
   setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+  plans: Plan[];
+  setPlans: React.Dispatch<React.SetStateAction<Plan[]>>;
   users: User[];
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
 }
 
-function AppContent({ projects, setProjects, users, setUsers }: AppContentProps) {
+function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }: AppContentProps) {
 
   const { user, logout, loading: authLoading, currentTenant } = useAuth();
 
@@ -289,6 +295,8 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isBrandingSettingsOpen, setIsBrandingSettingsOpen] = useState(false);
@@ -428,82 +436,48 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
       setProjects(firebaseProjects || []);
     }, effectiveTenantId);
 
-    // Subscribe to users - combines from all role collections
-    const unsubscribeUsers = subscribeToUsers((firebaseUsers) => {
-      setUsers(prev => {
-        const newIds = new Set(firebaseUsers.map(u => u.id));
-        const others = prev.filter(u => !newIds.has(u.id));
-        return [...others, ...firebaseUsers];
-      });
+    // Subscribe to plans
+    const unsubscribePlans = subscribeToPlans((firebasePlans) => {
+      setPlans(firebasePlans || []);
+    }, effectiveTenantId);
+
+    // Keep references to latest lists from each subscription
+    const latestUsers = { general: [] as User[], designers: [] as User[], clients: [] as User[] };
+    
+    const refreshUsers = () => {
+      const map = new Map<string, User>();
+      latestUsers.general.forEach(u => map.set(u.id, u));
+      latestUsers.designers.forEach(u => map.set(u.id, u));
+      latestUsers.clients.forEach(u => map.set(u.id, u));
+      setUsers(Array.from(map.values()));
+    };
+
+    // Subscribe to users - combines from all role collections correctly without keeping deleted items
+    const unsubscribeUsers = subscribeToUsers((data) => {
+      latestUsers.general = data || [];
+      refreshUsers();
     }, effectiveTenantId);
 
     // Also subscribe to role-specific collections for redundancy/updates
-    const unsubscribeDesigners = subscribeToDesigners((designers) => {
-      // Replace all designers with the new list, ensuring no ID duplicates
-      setUsers(prev => {
-        const newIds = new Set(designers.map(d => d.id));
-        const others = prev.filter(u => !newIds.has(u.id));
-        return [...others, ...designers];
-      });
+    const unsubscribeDesigners = subscribeToDesigners((data) => {
+      latestUsers.designers = data || [];
+      refreshUsers();
     }, effectiveTenantId);
 
-    const unsubscribeClients = subscribeToClients((clients) => {
-      // Replace all clients with the new list, ensuring no ID duplicates
-      setUsers(prev => {
-        const newIds = new Set(clients.map(c => c.id));
-        const others = prev.filter(u => !newIds.has(u.id));
-        return [...others, ...clients];
-      });
+    const unsubscribeClients = subscribeToClients((data) => {
+      latestUsers.clients = data || [];
+      refreshUsers();
     }, effectiveTenantId);
 
     // Cleanup subscriptions on unmount
     return () => {
       unsubscribeProjects();
+      unsubscribePlans();
       unsubscribeUsers();
       unsubscribeDesigners();
       unsubscribeClients();
     };
-  }, [user, setProjects, setUsers]);
-
-  // Auto-seed sample data for admins when tenant has no projects
-  useEffect(() => {
-    if (!user || user.role !== Role.ADMIN) return;
-    if (isAutoSeedingDemo) return;
-
-    const effectiveTenantId = user.tenantId || 'vast-canvas';
-    if (!effectiveTenantId) return;
-    if (projects.length > 0) return;
-
-    const sessionKey = `demo-seeded-${effectiveTenantId}`;
-    if (sessionStorage.getItem(sessionKey) === 'done') return;
-
-    const timer = setTimeout(async () => {
-      try {
-        setIsAutoSeedingDemo(true);
-        const result = await seedDemoData(effectiveTenantId, user.id, { replaceExisting: false });
-
-        if (result.success) {
-          addNotification({
-            title: 'Sample Data Loaded',
-            message: `${result.demoProjectIds?.length || 0} demo projects with full sample records have been added.`,
-            type: 'success',
-            recipientId: user.id
-          });
-
-          // Move admins to projects so seeded data is visible immediately
-          setCurrentView((prev) => (prev === 'dashboard' ? 'projects' : prev));
-        }
-
-        sessionStorage.setItem(sessionKey, 'done');
-      } catch (error) {
-        console.error('Auto-seed demo data failed:', error);
-      } finally {
-        setIsAutoSeedingDemo(false);
-      }
-    }, 1200);
-
-    return () => clearTimeout(timer);
-  }, [user, projects.length, isAutoSeedingDemo]);
+  }, [user, setProjects, setPlans, setUsers]);
 
   // Apply pending deep-link after projects or realTimeTasks update
   useEffect(() => {
@@ -621,6 +595,8 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
 
   const handleDeleteProject = async (project: Project) => {
     try {
+      // Optimistic update
+      setProjects(prev => prev.filter(p => p.id !== project.id));
       await deleteProject(project.id);
       addNotification('Success', `Project "${project.name}" deleted successfully`, 'success');
     } catch (error: any) {
@@ -631,6 +607,16 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
 
   // Filter Projects for List View based on Role
   const visibleProjects = projects.filter(p => {
+    if (user.isApproved === false) return false;
+    if (user.role === Role.ADMIN) return true;
+    if (user.role === Role.DESIGNER) return p.leadDesignerId === user.id || (p.teamMembers || []).includes(user.id);
+    if (user.role === Role.CLIENT) return p.clientId === user.id || (p.clientIds || []).includes(user.id);
+    return false;
+  });
+
+  // Filter Plans for List View based on Role
+  const visiblePlans = plans.filter(p => {
+    if (user.isApproved === false) return false;
     if (user.role === Role.ADMIN) return true;
     if (user.role === Role.DESIGNER) return p.leadDesignerId === user.id || (p.teamMembers || []).includes(user.id);
     if (user.role === Role.CLIENT) return p.clientId === user.id || (p.clientIds || []).includes(user.id);
@@ -665,14 +651,14 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
         setSelectedTask(null);
         setIsTaskOnlyView(false);
       }}
-      className={`flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-colors ${currentView === view && !selectedProject
-          ? 'text-gray-900 bg-gray-100'
-          : 'text-gray-500 hover:text-gray-900'
+      className={`flex flex-col items-center justify-center py-2 px-3 transition-all duration-300 min-w-[64px] ${currentView === view && !selectedProject
+          ? 'mobile-nav-item-active'
+          : 'text-gray-400 hover:text-gray-900'
         }`}
       title={label}
     >
-      <Icon className="w-6 h-6" />
-      <span className="text-xs font-medium mt-1">{label}</span>
+      <Icon className={`w-5 h-5 transition-transform duration-300 ${currentView === view && !selectedProject ? 'scale-110' : ''}`} />
+      <span className="text-[10px] font-bold mt-1.5 uppercase tracking-tighter mobile-nav-label">{label}</span>
     </button>
   );
 
@@ -713,7 +699,12 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
               {!isSidebarCollapsed && <p className="px-4 text-xs font-semibold text-gray-400 tracking-wider mb-2">Main</p>}
               {/* Hide Dashboard for clients; clients should see Projects directly */}
               {user.role !== Role.CLIENT && <SidebarItem view="dashboard" icon={FaRegCompass} label="Dashboard" />}
-              {canSeeProjects && <SidebarItem view="projects" icon={FaRegFolderOpen} label="Projects" />}
+              {canSeeProjects && (
+                <>
+                  <SidebarItem view="projects" icon={FaRegFolderOpen} label="Projects" />
+                  <SidebarItem view="plans" icon={Layers} label="Plans" />
+                </>
+              )}
               {/* DISABLED FOR DEPLOYMENT: Team Pulse */}
               {/* {user.role !== Role.CLIENT && <SidebarItem view="scheduler" icon={CalendarDays} label="Team Pulse" />} */}
             </div>
@@ -729,25 +720,29 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
 
             <div className="mb-6">
               {!isSidebarCollapsed && <p className="px-4 text-xs font-semibold text-gray-400 tracking-wider mb-2">Account</p>}
-              <SidebarItem view="settings" icon={FaSlidersH} label="Settings" />
+              <SidebarItem view="settings" icon={Settings} label="Settings" />
             </div>
           </div>
 
           <div className="p-4 border-t border-gray-200">
-            <button
-              onClick={async () => {
-                try {
-                  await logout();
-                } catch (error) {
-                  console.error('Logout failed:', error);
-                }
-              }}
-              className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center px-2' : 'justify-start px-4'} gap-3 py-3 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors`}
-              title={isSidebarCollapsed ? "Sign Out" : ""}
-            >
-              <LogOut className="w-5 h-5 flex-shrink-0" />
-              {!isSidebarCollapsed && <span className="font-medium">Sign Out</span>}
-            </button>
+            {/* Show Sign Out in sidebar only on md+ screens. On mobile, user can sign out from Settings view. */}
+            <div className="hidden md:block">
+              <button
+                onClick={async () => {
+                  try {
+                    await logout();
+                  } catch (error) {
+                    console.error('Logout failed:', error);
+                  }
+                }}
+                className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center px-2' : 'justify-start px-4'} gap-3 py-3 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors`}
+                title={isSidebarCollapsed ? "Sign Out" : ""}
+              >
+                <LogOut className="w-5 h-5 flex-shrink-0" />
+                {!isSidebarCollapsed && <span className="font-medium">Sign Out</span>}
+              </button>
+            </div>
+            <div className="block md:hidden text-center text-xs text-gray-400">Sign out is available in Settings</div>
           </div>
         </div>
       </aside>
@@ -786,9 +781,23 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
         {/* Added relative and z-[200] to ensure it stays above main sticky content but below modals */}
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 relative z-10">
           <div className="flex items-center gap-4">
-            {/* Hide menu button on mobile since we have bottom nav */}
+            {/* Settings Gear - Mobile Only, Top Left */}
+            <button
+              onClick={() => {
+                setCurrentView('settings');
+                setSelectedProject(null);
+                setSelectedTask(null);
+                setIsTaskOnlyView(false);
+              }}
+              className="md:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Settings"
+              aria-label="Open settings"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
           </div>
           <div className="flex items-center gap-4">
+            {/* Notifications Feature Disabled Completely
             <div className="relative">
               <button
                 onClick={() => setIsNotifOpen(!isNotifOpen)}
@@ -800,7 +809,6 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
                   <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white animate-pulse"></span>
                 )}
               </button>
-              {/* Notification Panel */}
               <NotificationPanel
                 isOpen={isNotifOpen}
                 onClose={() => setIsNotifOpen(false)}
@@ -813,6 +821,7 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
                 }}
               />
             </div>
+            */}
 
             <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
               <div className="text-right hidden sm:block">
@@ -846,6 +855,7 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
                   projects={projects}
                   users={users}
                   onUpdateProject={handleUpdateProject}
+                  onDeleteProject={handleDeleteProject}
                   onBack={() => {
                     setSelectedProject(null);
                     setSelectedTask(null);
@@ -864,7 +874,7 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
                 />
               ) : (
                 <>
-                  {currentView === 'dashboard' && <Dashboard projects={visibleProjects} users={users} onSelectProject={(project, opts) => {
+                  {currentView === 'dashboard' && <Dashboard projects={visibleProjects} plans={visiblePlans} users={users} onSelectProject={(project, opts) => {
                     setSelectedProject(project);
                     setSelectedTask(null);
                     setIsTaskOnlyView(false);
@@ -877,12 +887,15 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
 
                   {currentView === 'projects' && (
                     <div className="space-y-6">
-                      <div className="flex justify-between items-center">
-                        <h2 className="text-2xl font-bold text-gray-800">Projects</h2>
-                        {(user.role === Role.ADMIN) && (
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                        <div>
+                          <h2 className="text-2xl font-bold text-gray-800">Normal Custom Projects</h2>
+                          <p className="text-sm text-gray-500 mt-1">Individual tailored design services</p>
+                        </div>
+                        {(user.role === Role.ADMIN || user.role === Role.DESIGNER) && (
                           <button
                             onClick={() => setIsNewProjectModalOpen(true)}
-                            className="bg-gray-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition-colors shadow-sm flex items-center gap-2"
+                            className="bg-gray-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition-colors shadow-sm flex items-center justify-center gap-2 w-full sm:w-auto"
                           >
                             <Palette className="w-4 h-4" /> New Project
                           </button>
@@ -1045,11 +1058,13 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
                         </div>
                       </div>
 
-                      {visibleProjects.length > 0 ? (
+                        
+
+                      {visibleProjects.filter(p => !p.packageType).length > 0 ? (
                         <ProjectList
                           projects={(() => {
-                            // First filter the projects
-                            let filtered = visibleProjects.filter(p => {
+                            // First filter the projects (Only custom ones)
+                            let filtered = visibleProjects.filter(p => !p.packageType).filter(p => {
                               // Name filter
                               if (projectNameFilter.trim() && !p.name.toLowerCase().includes(projectNameFilter.toLowerCase())) {
                                 return false;
@@ -1102,12 +1117,177 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
                           user={user}
                           setEditingProject={setEditingProject}
                           setIsNewProjectModalOpen={setIsNewProjectModalOpen}
-                          onDeleteProject={handleDeleteProject}
+                          onRequestDelete={(project) => {
+                            setProjectToDelete(project);
+                            setIsDeletingProject(true);
+                          }}
                           realTimeTasks={realTimeTasks}
                         />
                       ) : (
                         <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
-                          <p className="text-gray-500">No projects found for your account.</p>
+                          <p className="text-gray-500">No custom projects found.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {currentView === 'plans' && (
+                    <div className="space-y-6">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                        <div>
+                          <h2 className="text-2xl font-bold text-gray-800">Firm Plans</h2>
+                          <p className="text-sm text-gray-500 mt-1">Predefined package structures provided by the firm</p>
+                        </div>
+                        {(user.role === Role.ADMIN) && (
+                          <button
+                            onClick={() => setIsNewProjectModalOpen(true)}
+                            className="bg-gray-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition-colors shadow-sm flex items-center justify-center gap-2 w-full sm:w-auto"
+                          >
+                            <Palette className="w-4 h-4" /> New Plan Project
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Project Filters */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-3">
+                        <div className="hidden md:flex md:items-end gap-3">
+                          <div className="flex-1 min-w-[180px]">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Search by Name</label>
+                            <input
+                              type="text"
+                              placeholder="Search plans..."
+                              value={projectNameFilter}
+                              onChange={(e) => setProjectNameFilter(e.target.value)}
+                              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                            <select
+                              aria-label="Filter by category"
+                              value={projectCategoryFilterValue}
+                              onChange={(e) => setProjectCategoryFilterValue(e.target.value as ProjectCategory | 'All')}
+                              className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white hover:bg-gray-50 cursor-pointer font-medium text-gray-700 appearance-none"
+                              style={{
+                                backgroundImage: "url('data:image/svg+xml;utf8,<svg fill=\"none\" height=\"20\" viewBox=\"0 0 20 20\" width=\"20\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 8l3 3 3-3\" stroke=\"%23333\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\"></path></svg>')",
+                                backgroundPosition: 'right 0.5rem center',
+                                backgroundRepeat: 'no-repeat',
+                                backgroundSize: '1.25rem 1.25rem',
+                                paddingRight: '1.75rem'
+                              }}
+                            >
+                              <option value="All">All Categories</option>
+                              <option value={ProjectCategory.RESIDENTIAL}>Residential</option>
+                              <option value={ProjectCategory.COMMERCIAL}>Commercial</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Sort By</label>
+                            <select
+                              aria-label="Sort plans"
+                              value={projectSortBy}
+                              onChange={(e) => setProjectSortBy(e.target.value as 'name-asc' | 'name-desc' | 'progress-asc' | 'progress-desc' | 'recent-asc' | 'recent-desc')}
+                              className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white hover:bg-gray-50 cursor-pointer font-medium text-gray-700 appearance-none"
+                              style={{
+                                backgroundImage: "url('data:image/svg+xml;utf8,<svg fill=\"none\" height=\"20\" viewBox=\"0 0 20 20\" width=\"20\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 8l3 3 3-3\" stroke=\"%23333\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\"></path></svg>')",
+                                backgroundPosition: 'right 0.5rem center',
+                                backgroundRepeat: 'no-repeat',
+                                backgroundSize: '1.25rem 1.25rem',
+                                paddingRight: '1.75rem'
+                              }}
+                            >
+                              <option value="recent-desc">Recent (Newest First)</option>
+                              <option value="recent-asc">Recent (Oldest First)</option>
+                              <option value="name-asc">Name (A-Z)</option>
+                              <option value="name-desc">Name (Z-A)</option>
+                              <option value="progress-asc">Progress (Low to High)</option>
+                              <option value="progress-desc">Progress (High to Low)</option>
+                            </select>
+                          </div>
+
+                          {(projectNameFilter || projectCategoryFilterValue !== 'All') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProjectNameFilter('');
+                                setProjectCategoryFilterValue('All');
+                              }}
+                              className="px-2 py-1.5 bg-gray-200 hover:bg-gray-300 rounded text-xs font-medium transition-colors"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {visibleProjects.filter(p => !!p.packageType).length > 0 ? (
+                        <ProjectList
+                          projects={(() => {
+                            // First filter the projects (Only plan-based ones)
+                            let filtered = visibleProjects.filter(p => !!p.packageType).filter(p => {
+                              // Name filter
+                              if (projectNameFilter.trim() && !p.name.toLowerCase().includes(projectNameFilter.toLowerCase())) {
+                                return false;
+                              }
+                              // Category filter
+                              if (projectCategoryFilterValue !== 'All' && p.category !== projectCategoryFilterValue) {
+                                return false;
+                              }
+                              return true;
+                            });
+
+                            // Then sort the filtered projects
+                            return filtered.sort((a, b) => {
+                              switch (projectSortBy) {
+                                case 'name-asc':
+                                  return a.name.localeCompare(b.name);
+                                case 'name-desc':
+                                  return b.name.localeCompare(a.name);
+                                case 'progress-asc': {
+                                  const progressA = calculateProjectProgress(realTimeTasks.get(a.id) || []);
+                                  const progressB = calculateProjectProgress(realTimeTasks.get(b.id) || []);
+                                  return progressA - progressB;
+                                }
+                                case 'progress-desc': {
+                                  const progressA = calculateProjectProgress(realTimeTasks.get(a.id) || []);
+                                  const progressB = calculateProjectProgress(realTimeTasks.get(b.id) || []);
+                                  return progressB - progressA;
+                                }
+                                case 'recent-asc': {
+                                  const dateA = new Date(typeof a.createdAt === 'string' ? a.createdAt : (a.createdAt as any)?.toDate?.() || new Date());
+                                  const dateB = new Date(typeof b.createdAt === 'string' ? b.createdAt : (b.createdAt as any)?.toDate?.() || new Date());
+                                  return dateA.getTime() - dateB.getTime();
+                                }
+                                case 'recent-desc': {
+                                  const dateA = new Date(typeof a.createdAt === 'string' ? a.createdAt : (a.createdAt as any)?.toDate?.() || new Date());
+                                  const dateB = new Date(typeof b.createdAt === 'string' ? b.createdAt : (b.createdAt as any)?.toDate?.() || new Date());
+                                  return dateB.getTime() - dateA.getTime();
+                                }
+                                default:
+                                  return 0;
+                              }
+                            });
+                          })()}
+                          onSelect={(project) => {
+                            setSelectedProject(project);
+                            setSelectedTask(null);
+                            setIsTaskOnlyView(false);
+                            setInitialProjectTab(undefined);
+                          }}
+                          user={user}
+                          setEditingProject={setEditingProject}
+                          setIsNewProjectModalOpen={setIsNewProjectModalOpen}
+                          onRequestDelete={(project) => {
+                            setProjectToDelete(project);
+                            setIsDeletingProject(true);
+                          }}
+                          realTimeTasks={realTimeTasks}
+                        />
+                      ) : (
+                        <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
+                          <p className="text-gray-500">No projects under firm plans found.</p>
                         </div>
                       )}
                     </div>
@@ -1165,7 +1345,7 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
                               </div>
                               <div>
                                 <p className="text-xs text-gray-500 font-semibold">Email</p>
-                                <p className="text-gray-900 font-medium">{profileDisplayData?.email}</p>
+                                <p className="text-gray-900 font-medium break-words max-w-full">{profileDisplayData?.email}</p>
                               </div>
                               <div>
                                 <p className="text-xs text-gray-500 font-semibold">Role</p>
@@ -1190,6 +1370,21 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
                               </div>
                             )}
                           </div>
+                        </div>
+                        {/* Mobile-only Sign Out (visible inside Settings) */}
+                        <div className="md:hidden mt-4">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await logout();
+                              } catch (error) {
+                                console.error('Logout failed:', error);
+                              }
+                            }}
+                            className="w-full px-4 py-3 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 transition-colors"
+                          >
+                            Sign Out
+                          </button>
                         </div>
 
                         {/* Branding Settings - Admin Only */}
@@ -1262,13 +1457,16 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
         </main>
 
         {/* Bottom Navigation Bar - Mobile Only */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-[200]">
-          <div className="flex justify-around items-center h-20 px-1 overflow-x-auto">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[250] mobile-bottom-nav border-t border-gray-200/50">
+          <div className="flex justify-around items-center h-16 px-2">
             {user.role !== Role.CLIENT && (
               <BottomNavItem view="dashboard" icon={FaRegCompass} label="Dashboard" />
             )}
             {canSeeProjects && (
-              <BottomNavItem view="projects" icon={FaRegFolderOpen} label="Projects" />
+              <>
+                <BottomNavItem view="projects" icon={FaRegFolderOpen} label="Projects" />
+                <BottomNavItem view="plans" icon={Layers} label="Plans" />
+              </>
             )}
             {canSeeClients && (
               <BottomNavItem view="clients" icon={FaRegAddressCard} label="Clients" />
@@ -1279,7 +1477,6 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
             {canSeeAdmins && (
               <BottomNavItem view="admins" icon={FaUserShield} label="Admins" />
             )}
-            <BottomNavItem view="settings" icon={FaSlidersH} label="Settings" />
           </div>
         </nav>
       </div>
@@ -1293,6 +1490,7 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
           }}
           onSave={handleAddProject}
           initialProject={editingProject}
+          isPlanMode={currentView === 'plans' || (editingProject?.packageType !== undefined)}
         // selectedFirmId={selectedFirmId} // COMMENTED OUT: Cross-firm support disabled
         />
       )}
@@ -1315,6 +1513,26 @@ function AppContent({ projects, setProjects, users, setUsers }: AppContentProps)
 
       {/* Page title updater for tenant branding */}
       <PageTitleUpdater />
+
+      {isDeletingProject && projectToDelete && (
+        <ConfirmDialog
+          isOpen={true}
+          onClose={() => {
+            setIsDeletingProject(false);
+            setProjectToDelete(null);
+          }}
+          title="Delete Project"
+          message={`Are you sure you want to delete project "${projectToDelete.name}"? This action cannot be undone.`}
+          onConfirm={() => {
+            onDeleteProject(projectToDelete);
+            setIsDeletingProject(false);
+            setProjectToDelete(null);
+          }}
+          confirmText="Delete"
+          cancelText="Cancel"
+          variant="danger"
+        />
+      )}
     </div>
   );
 }

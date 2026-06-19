@@ -256,8 +256,8 @@ const PendingItemsModal: React.FC<PendingItemsModalProps> = ({
   );
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-fade-in">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-fade-in">
+      <div className="bg-white shadow-2xl w-full max-w-6xl max-h-[95vh] md:max-h-[90vh] flex flex-col rounded-2xl overflow-hidden">
         {/* Header */}
         <div className="p-6 border-b border-gray-100 flex-shrink-0">
           <div className="flex justify-between items-center">

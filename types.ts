@@ -58,7 +58,18 @@ export enum ProjectPackage {
   PACKAGE_50 = '50 Creatives p.a.',
   PACKAGE_100 = '100 Creatives p.a.',
   PACKAGE_200 = '200 Creatives p.a.',
-  CUSTOM = 'Custom' // Added custom in case they want to specify none or custom
+  IMPACT = 'Impact Plan' // Renamed from CUSTOM to make it a distinct firm plan
+}
+
+export interface Package {
+  id: string;
+  tenantId?: string;
+  name: string;
+  description: string;
+  creativeQuota: number;
+  type: ProjectPackage;
+  price?: number;
+  features?: string[];
 }
 
 export enum TaskStatus {
@@ -106,6 +117,7 @@ export interface User {
     taskCount: number; // Number of completed tasks in this project
     netAmount: number; // Net amount (approved only) in this project
   }>;
+  isApproved?: boolean; // Whether the user has been approved by an admin
 }
 
 export interface FinancialRecord {
@@ -272,6 +284,40 @@ export interface ProjectDocument {
   clientApprovedDate?: string;
 }
 
+// Plan: Package-based creative work with fixed creative quotas (50/100/200 Creatives p.a., Impact Plan)
+export interface Plan {
+  id: string;
+  tenantId?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+  name: string;
+  clientId: string; // Primary client
+  clientIds?: string[]; // Additional clients
+  leadDesignerId: string;
+  teamMembers?: string[]; // IDs of explicitly added members
+  team?: User[];
+  packageType: ProjectPackage; // 50/100/200 Creatives p.a. or Impact Plan
+  status: ProjectStatus;
+  
+  startDate: string;
+  deadline: string;
+  budget: number;
+  initialBudget?: number; // Original budget before any increases
+  thumbnail: string;
+  description: string;
+  discountAmount?: number; // Optional discount applied to plan (absolute)
+  discountPercent?: number; // Optional discount applied to plan (percent)
+  
+  // Creative tracking for plans
+  creativeUsed: number; // Number of creatives delivered/used
+  meetings: Meeting[];
+  activityLog: ActivityLog[];
+  documents: ProjectDocument[];
+}
+
+// Project: Custom work items (print, packaging, logo design, etc.)
 export interface Project {
   id: string;
   tenantId?: string;
@@ -290,7 +336,7 @@ export interface Project {
   status: ProjectStatus;
   type: ProjectType; // Design Service or Full Service
   category: ProjectCategory; // Commercial or Residential
-  packageType?: ProjectPackage; // 50/100/200 Creatives p.a.
+  packageType?: ProjectPackage; // For plan-based projects inside custom projects list
 
   startDate: string;
   deadline: string;
@@ -298,6 +344,8 @@ export interface Project {
   initialBudget?: number; // Original budget before any increases
   thumbnail: string;
   description: string;
+  discountAmount?: number; // Optional discount applied to project (absolute)
+  discountPercent?: number; // Optional discount applied to project (percent)
   tasks: Task[];
   financials: FinancialRecord[];
   meetings: Meeting[];

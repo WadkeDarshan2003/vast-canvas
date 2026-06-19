@@ -13,7 +13,7 @@ import {
   Unsubscribe
 } from "firebase/firestore";
 import { db } from "./firebaseConfig";
-import { Project, User, Task, TaskStatus, FinancialRecord } from "../types";
+import { Project, Plan, User, Task, TaskStatus, FinancialRecord } from "../types";
 
 // ============ PROJECTS COLLECTION ============
 
@@ -155,6 +155,127 @@ export const subscribeToUserProjects = (
     // Suppress permission-denied errors during logout
     if (error.code !== 'permission-denied') {
       console.error('❌ Error in user projects listener:', error);
+    }
+  });
+};
+
+// ============ PLANS COLLECTION ============
+
+export const plansRef = collection(db, "plans");
+
+// Get all plans
+export const getAllPlans = async (): Promise<Plan[]> => {
+  try {
+    const snapshot = await getDocs(plansRef);
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Plan));
+  } catch (error) {
+    console.error("Error fetching plans:", error);
+    return [];
+  }
+};
+
+// Get single plan
+export const getPlan = async (planId: string): Promise<Plan | null> => {
+  try {
+    const docSnap = await getDoc(doc(db, "plans", planId));
+    if (docSnap.exists()) {
+      return { ...docSnap.data(), id: docSnap.id } as Plan;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching plan:", error);
+    return null;
+  }
+};
+
+// Create plan
+export const createPlan = async (plan: Omit<Plan, "id">): Promise<string> => {
+  try {
+    const newDocRef = doc(plansRef);
+    const cleanedPlan = cleanUndefined(plan);
+    await setDoc(newDocRef, cleanedPlan);
+    return newDocRef.id;
+  } catch (error) {
+    console.error("Error creating plan:", error);
+    throw error;
+  }
+};
+
+// Update plan
+export const updatePlan = async (planId: string, updates: Partial<Plan>): Promise<void> => {
+  try {
+    const cleanedUpdates = cleanUndefined(updates);
+    await updateDoc(doc(db, "plans", planId), cleanedUpdates);
+  } catch (error) {
+    console.error("Error updating plan:", error);
+    throw error;
+  }
+};
+
+// Delete plan
+export const deletePlan = async (planId: string): Promise<void> => {
+  try {
+    await deleteDoc(doc(db, "plans", planId));
+  } catch (error) {
+    console.error("Error deleting plan:", error);
+    throw error;
+  }
+};
+
+// Real-time listener for plans
+export const subscribeToPlans = (callback: (plans: Plan[]) => void, tenantId?: string, tenantIds?: string[]): Unsubscribe => {
+  // If user has multiple tenantIds (multi-tenant designer/vendor), fetch ALL plans and filter in memory
+  if (tenantIds && tenantIds.length > 0) {
+    return onSnapshot(query(plansRef), (snapshot) => {
+      let plans = snapshot.docs.map((d) => ({ ...d.data(), id: d.id } as Plan));
+      // Filter to only plans from user's tenants
+      plans = plans.filter(p => tenantIds.includes(p.tenantId!));
+      callback(plans);
+    }, (error) => {
+      if (error.code !== 'permission-denied') {
+        console.error('❌ Error in plans collection listener:', error);
+      }
+    });
+  }
+
+  // Single tenant case (admin, client, etc.)
+  let q = query(plansRef);
+  if (tenantId) {
+    q = query(plansRef, where('tenantId', '==', tenantId));
+  }
+
+  return onSnapshot(q, (snapshot) => {
+    const plans = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Plan));
+    callback(plans);
+  }, (error) => {
+    if (error.code !== 'permission-denied') {
+      console.error('❌ Error in plans collection listener:', error);
+    }
+  });
+};
+
+// Real-time listener for user's plans
+export const subscribeToUserPlans = (
+  userId: string,
+  userRole: string,
+  callback: (plans: Plan[]) => void
+): Unsubscribe => {
+  let constraints: QueryConstraint[] = [];
+
+  if (userRole === "Client") {
+    constraints = [where("clientId", "==", userId)];
+  } else if (userRole === "Designer") {
+    constraints = [where("leadDesignerId", "==", userId)];
+  }
+
+  const q = query(plansRef, ...constraints);
+
+  return onSnapshot(q, (snapshot) => {
+    const plans = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Plan));
+    callback(plans);
+  }, (error) => {
+    if (error.code !== 'permission-denied') {
+      console.error('❌ Error in user plans listener:', error);
     }
   });
 };

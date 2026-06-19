@@ -77,9 +77,9 @@ export const getProjectFinancialRecords = async (projectId: string): Promise<Fin
 };
 
 // Real-time listener for project's financial records (subcollection)
-export const subscribeToProjectFinancialRecords = (projectId: string, callback: (records: FinancialRecord[]) => void): Unsubscribe => {
+export const subscribeToProjectFinancialRecords = (projectId: string, callback: (records: FinancialRecord[]) => void, parentCollection: string = "projects"): Unsubscribe => {
   return onSnapshot(
-    collection(db, "projects", projectId, "finances"),
+    collection(db, parentCollection, projectId, "finances"),
     (snapshot) => {
       const records = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as FinancialRecord));
         // Financial records updated for project

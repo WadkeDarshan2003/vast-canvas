@@ -1,6 +1,6 @@
 import { createUserWithEmailAndPassword, signOut, signInWithEmailAndPassword, getAuth, initializeAuth, inMemoryPersistence } from 'firebase/auth';
 import { auth, db, firebaseConfig } from './firebaseConfig';
-import { setDoc, doc, updateDoc, getFirestore, collection, addDoc } from 'firebase/firestore';
+import { setDoc, doc, updateDoc, getFirestore, collection, addDoc, deleteDoc } from 'firebase/firestore';
 import { User, Role } from '../types';
 import { initializeApp, deleteApp, getApps } from 'firebase/app';
 import { uploadLogoToStorage } from './storageService';
@@ -38,6 +38,30 @@ export const updateUserInFirebase = async (user: User): Promise<void> => {
   } catch (error: any) {
     console.error('Error updating user in Firebase:', error);
     throw new Error(error.message || 'Failed to update user');
+  }
+};
+
+/**
+ * Delete a user from Firestore and role-specific collections
+ * @param user - User data to delete
+ */
+export const deleteUserFromFirebase = async (user: User): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', user.id);
+    const roleCollection = user.role.toLowerCase() + 's';
+    const roleRef = doc(db, roleCollection, user.id);
+
+    // Step 1: Delete from role-specific collection
+    await deleteDoc(roleRef);
+    if (process.env.NODE_ENV !== 'production') console.log(`✅ Deleted from '${roleCollection}' collection: ${user.id}`);
+
+    // Step 2: Delete from 'users' collection
+    await deleteDoc(userRef);
+    if (process.env.NODE_ENV !== 'production') console.log(`✅ Deleted from 'users' collection: ${user.id}`);
+
+  } catch (error: any) {
+    console.error('Error deleting user from Firebase:', error);
+    throw new Error(error.message || 'Failed to delete user');
   }
 };
 
