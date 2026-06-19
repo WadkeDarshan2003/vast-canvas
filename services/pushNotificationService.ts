@@ -2,6 +2,19 @@ import { getToken, onMessage } from "firebase/messaging";
 import { messaging, db } from "./firebaseConfig";
 import { doc, updateDoc, arrayUnion, getDoc, setDoc } from "firebase/firestore";
 
+const ensureMessagingServiceWorkerRegistration = async (): Promise<ServiceWorkerRegistration | null> => {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    return null;
+  }
+
+  const existingRegistration = await navigator.serviceWorker.getRegistration('/sw.js');
+  if (existingRegistration) {
+    return existingRegistration;
+  }
+
+  return navigator.serviceWorker.register('/sw.js');
+};
+
 export const requestNotificationPermission = async (userId: string): Promise<string | null> => {
   if (!messaging) {
     console.log("Notification permission skipped: Messaging not supported");
@@ -14,9 +27,22 @@ export const requestNotificationPermission = async (userId: string): Promise<str
     console.log("Permission status:", permission);
     
     if (permission === "granted") {
+      const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+
+      if (!vapidKey) {
+        throw new Error("Missing VITE_FIREBASE_VAPID_KEY for FCM token registration");
+      }
+
+      const serviceWorkerRegistration = await ensureMessagingServiceWorkerRegistration();
+
+      if (!serviceWorkerRegistration) {
+        throw new Error("Service worker registration is not available for FCM token registration");
+      }
+
       console.log("Getting FCM token...");
       const token = await getToken(messaging, {
-        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
+        vapidKey,
+        serviceWorkerRegistration
       });
       
       console.log("FCM Token received:", token ? token.substring(0, 20) + "..." : "null");
@@ -61,7 +87,7 @@ export const onMessageListener = () =>
       
       // Show browser notification even when app is in foreground
       if (Notification.permission === 'granted') {
-        const notificationTitle = payload.notification?.title || 'New Notification';
+        const notificationTitle = payload.notification?.title || 'Vast Canvas';
         const notificationOptions = {
           body: payload.notification?.body || '',
           icon: payload.notification?.icon || '/icons/icon-192x192.png',
@@ -116,8 +142,6 @@ export const sendPushNotification = async (
   body: string,
   url?: string
 ): Promise<void> => {
-  // console.log(`[Push Notification] To: ${recipientId}, Title: ${title}`);
-
   try {
     const payload = {
       recipientId,

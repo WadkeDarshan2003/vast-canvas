@@ -18,7 +18,7 @@ import MeetingForm from './MeetingForm';
 import Spinner from './Spinner';
 import { 
   Calendar, DollarSign, Plus, CheckCircle, 
-  ChevronRight, Lock, Clock, FileText,
+  ChevronRight, ChevronLeft, Lock, Clock, FileText,
   Layout, ListChecks, ArrowRight, User as UserIcon, X, FolderKanban,
   MessageSquare, ThumbsUp, ThumbsDown, Send, Shield, History, Layers, Link2, AlertCircle, Tag, Upload, Ban, PauseCircle, PlayCircle,
   File as FileIcon, Eye, EyeOff, Download, Pencil, Mail, Filter, IndianRupee, Bell, MessageCircle, Users, MessageCircle as CommentIcon, Trash2, Edit3, Check, Wallet
@@ -33,6 +33,7 @@ interface ProjectDetailProps {
   projects?: Project[]; // Add projects prop for filtering context
   users: User[];
   onUpdateProject: (updatedProject: Project) => void;
+  onDeleteProject?: (project: Project) => void;
   onBack: () => void;
   initialTab?: 'discovery' | 'plan' | 'financials' | 'team' | 'timeline' | 'documents' | 'meetings';
   initialTask?: Task;
@@ -42,7 +43,7 @@ interface ProjectDetailProps {
 const ROW_HEIGHT = 48; // Fixed height for Gantt rows
 const DEFAULT_AVATAR = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"%3E%3Ccircle cx="12" cy="12" r="12" fill="%23e5e7eb"/%3E%3C/svg%3E';
 
-const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], users, onUpdateProject, onBack, initialTab, initialTask, onCloseTask }) => {
+const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], users, onUpdateProject, onDeleteProject, onBack, initialTab, initialTask, onCloseTask }) => {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
   const { updateExistingProject, deleteExistingProject, loading: projectLoading } = useProjectCrud();
@@ -188,6 +189,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
   const [editingSharedDoc, setEditingSharedDoc] = useState<ProjectDocument | null>(null);
   const [tempSharedWith, setTempSharedWith] = useState<string[]>([]);
   const [isTaskDocModalOpen, setIsTaskDocModalOpen] = useState(false);
+  const [selectedFilePreviews, setSelectedFilePreviews] = useState<Record<string, string>>({});
 
   // Financials State
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
@@ -235,6 +237,15 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
   const [deletingDoc, setDeletingDoc] = useState<ProjectDocument | null>(null);
   const [isLeadDesignerRemovalConfirmOpen, setIsLeadDesignerRemovalConfirmOpen] = useState(false);
 
+  // Status Change Confirmation State
+  const [isStatusConfirmOpen, setIsStatusConfirmOpen] = useState(false);
+  const [statusConfirmData, setStatusConfirmData] = useState<{ nextStatus: ProjectStatus | null, title: string, message: string, onConfirm: () => Promise<void> }>({ 
+    nextStatus: null, 
+    title: '', 
+    message: '',
+    onConfirm: async () => {}
+  });
+
   // Vendor Billing Report State
   const [selectedVendorForBilling, setSelectedVendorForBilling] = useState<User | null>(null);
   // Designer Details State
@@ -262,7 +273,14 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
   const [isAdditionalBudgetModalOpen, setIsAdditionalBudgetModalOpen] = useState(false);
   const [additionalBudgetAmount, setAdditionalBudgetAmount] = useState('');
   const [additionalBudgetDescription, setAdditionalBudgetDescription] = useState('');
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (activeTab === 'discovery' && selectedChatId) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [selectedChatId, activeTab]); // Note: In a real app we'd trigger on selectedChatMessages change as well, but we can't easily add it to the dep array here if it's defined later. We'll add another effect after selectedChatMessages is defined.
   // Real-time Subcollection State
   const [realTimeMeetings, setRealTimeMeetings] = useState<Meeting[]>([]);
   const [realTimeDocuments, setRealTimeDocuments] = useState<ProjectDocument[]>([]);
@@ -303,8 +321,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
 
     const packageConfigs: Record<'starter' | 'growth' | 'business' | 'impact' | 'custom', PackageConfig> = {
       starter: {
-        color: '#E8356E',
-        bgColor: '#FEF0F5',
+        color: '#E91E63',
+        bgColor: '#FCE4EC',
         icon: 'S',
         title: 'STARTER PLAN',
         investmentAmount: 18000,
@@ -321,8 +339,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
         ]
       },
       growth: {
-        color: '#FF6B35',
-        bgColor: '#FFF5F0',
+        color: '#FF9800',
+        bgColor: '#FFF3E0',
         icon: 'G',
         title: 'GROWTH PLAN',
         investmentAmount: 40000,
@@ -338,8 +356,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
         ]
       },
       business: {
-        color: '#3CB89F',
-        bgColor: '#F0FDFB',
+        color: '#009688',
+        bgColor: '#E0F2F1',
         icon: 'B',
         title: 'BUSINESS PLAN',
         investmentAmount: 70000,
@@ -356,8 +374,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
         ]
       },
       impact: {
-        color: '#2E4A7E',
-        bgColor: '#F0F4FB',
+        color: '#283593',
+        bgColor: '#E8EAF6',
         icon: 'I',
         title: 'IMPACT PLAN',
         investmentAmount: 120000,
@@ -393,14 +411,19 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
 
     const normalizedPackageType = (project.packageType || '').toLowerCase();
 
-    const packageKey: 'starter' | 'growth' | 'business' | 'impact' | 'custom' = (() => {
+    const packageKey: 'starter' | 'growth' | 'business' | 'impact' | 'custom' | null = (() => {
       if (normalizedPackageType.includes('custom')) return 'custom';
-      if (normalizedPackageType.includes('starter') || normalizedPackageType.includes('package 1') || normalizedPackageType.includes('20')) return 'starter';
-      if (normalizedPackageType.includes('growth') || normalizedPackageType.includes('package 2') || normalizedPackageType.includes('50')) return 'growth';
-      if (normalizedPackageType.includes('business') || normalizedPackageType.includes('package 3') || normalizedPackageType.includes('100')) return 'business';
-      if (normalizedPackageType.includes('impact') || normalizedPackageType.includes('package 4') || normalizedPackageType.includes('200')) return 'impact';
-      return 'growth';
+      if (normalizedPackageType.includes('starter') || normalizedPackageType.includes('package 1') || normalizedPackageType.includes('50')) return 'starter';
+      if (normalizedPackageType.includes('growth') || normalizedPackageType.includes('package 2') || normalizedPackageType.includes('100')) return 'growth';
+      if (normalizedPackageType.includes('business') || normalizedPackageType.includes('package 3') || normalizedPackageType.includes('200')) return 'business';
+      if (normalizedPackageType.includes('impact') || normalizedPackageType.includes('package 4')) return 'impact';
+      return null; // No plan selected
     })();
+
+    // Only proceed if a valid plan is selected
+    if (!packageKey || !packageConfigs[packageKey]) {
+      return null; // Return null if no plan is selected
+    }
 
     const config = packageConfigs[packageKey];
 
@@ -656,7 +679,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
   const isAdmin = user.role === Role.ADMIN;
   const isLeadDesigner = user.role === Role.DESIGNER && project.leadDesignerId === user.id;
 
-  const canEditProject = isAdmin;
+  const canEditProject = isAdmin || isLeadDesigner;
   // Documents: Everyone can upload/view if shared with them.
   const canUploadDocs = true; 
   const canViewFinancials = !isVendor; 
@@ -852,6 +875,12 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
     return [...comments].sort((a, b) => parseChatTimestamp(a.timestamp) - parseChatTimestamp(b.timestamp));
   }, [selectedChat, meetingComments, parseChatTimestamp]);
 
+  useEffect(() => {
+    if (activeTab === 'discovery' && selectedChatId) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [selectedChatMessages, activeTab, selectedChatId]);
+
   const directChatTargets = useMemo(
     () => discussionMembers.filter(member => member.id !== user.id),
     [discussionMembers, user.id]
@@ -929,13 +958,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
   }, [chatThreads, createChatThread, discussionMemberIds, discussionMembers, project.name]);
 
   useEffect(() => {
-    if (chatThreads.length === 0) {
+    // If the selected chat no longer exists, clear selection so it doesn't break
+    if (selectedChatId && !chatThreads.some(chat => chat.id === selectedChatId)) {
       setSelectedChatId(null);
-      return;
-    }
-
-    if (!selectedChatId || !chatThreads.some(chat => chat.id === selectedChatId)) {
-      setSelectedChatId(chatThreads[0].id);
     }
   }, [chatThreads, selectedChatId]);
 
@@ -1124,8 +1149,12 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
     setIsProjectDeleteConfirmOpen(false);
     showLoading(`Deleting project "${project.name}"...`);
     try {
-      await deleteExistingProject(project.id);
-      addNotification('Success', 'Project deleted successfully', 'success');
+      if (onDeleteProject) {
+        onDeleteProject(project); // Optimistic update will happen in parent
+      } else {
+        await deleteExistingProject(project.id);
+        addNotification('Success', 'Project deleted successfully', 'success');
+      }
       hideLoading();
       onBack(); // Go back to project list
     } catch (error: any) {
@@ -3587,15 +3616,22 @@ addNotification('Error', 'Failed to complete task', 'error');
     const next = getNextStatus(project.status);
     if (!next) return;
     
-    if (window.confirm(`Are you sure you want to move the project from ${project.status} to ${next}?`)) {
-      try {
-        await updateExistingProject(project.id, { status: next });
-        addNotification('Phase Updated', `Project moved to ${next} phase`, 'success');
-      } catch (error: any) {
-        console.error('Error updating status:', error);
-        addNotification('Error', 'Failed to update project status', 'error');
+    setStatusConfirmData({
+      nextStatus: next,
+      title: 'Phase Update',
+      message: `Are you sure you want to move the project from ${project.status} to ${next}?`,
+      onConfirm: async () => {
+        try {
+          await updateExistingProject(project.id, { status: next });
+          addNotification('Phase Updated', `Project moved to ${next} phase`, 'success');
+        } catch (error: any) {
+          console.error('Error updating status:', error);
+          addNotification('Error', 'Failed to update project status', 'error');
+        }
+        setIsStatusConfirmOpen(false);
       }
-    }
+    });
+    setIsStatusConfirmOpen(true);
   };
 
   const handleToggleHold = async () => {
@@ -3604,7 +3640,11 @@ addNotification('Error', 'Failed to complete task', 'error');
         const hasExecutionActivity = currentTasks.some(t => t.category === 'Execution' && (t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.DONE));
         const resumeStatus = hasExecutionActivity ? ProjectStatus.EXECUTION : ProjectStatus.PLANNING;
         
-        if (window.confirm(`Resume project to ${resumeStatus}?`)) {
+        setStatusConfirmData({
+          nextStatus: resumeStatus,
+          title: 'Resume Project',
+          message: `Resume project to ${resumeStatus}?`,
+          onConfirm: async () => {
             try {
                 await updateExistingProject(project.id, { status: resumeStatus });
                 addNotification('Project Resumed', `Project resumed to ${resumeStatus}`, 'success');
@@ -3612,10 +3652,17 @@ addNotification('Error', 'Failed to complete task', 'error');
                 console.error(e);
                 addNotification('Error', 'Failed to resume project', 'error');
             }
-        }
+            setIsStatusConfirmOpen(false);
+          }
+        });
+        setIsStatusConfirmOpen(true);
     } else {
         // Hold Logic
-        if (window.confirm('Are you sure you want to put this project ON HOLD?')) {
+        setStatusConfirmData({
+          nextStatus: ProjectStatus.ON_HOLD,
+          title: 'Hold Project',
+          message: 'Are you sure you want to put this project ON HOLD?',
+          onConfirm: async () => {
             try {
                 await updateExistingProject(project.id, { status: ProjectStatus.ON_HOLD });
                 addNotification('Project On Hold', 'Project status set to On Hold', 'warning');
@@ -3623,7 +3670,10 @@ addNotification('Error', 'Failed to complete task', 'error');
                 console.error(e);
                 addNotification('Error', 'Failed to update status', 'error');
             }
-        }
+            setIsStatusConfirmOpen(false);
+          }
+        });
+        setIsStatusConfirmOpen(true);
     }
   };
 
@@ -3712,19 +3762,6 @@ addNotification('Error', 'Failed to complete task', 'error');
                     </span>
                   </button>
 
-                  {/* Mobile Floating Action Button */}
-                  <button 
-                    onClick={() => {
-                      if(activeTab === 'documents') { setIsDocModalOpen(true); setSelectedFiles([]); }
-                      if(activeTab === 'financials') { openTransactionModal(); }
-                      if(activeTab === 'team') { setIsMemberModalOpen(true); setSelectedMemberId(''); }
-                      if(activeTab === 'discovery') { setIsMeetingModalOpen(true); }
-                    }}
-                    className="md:hidden fixed bottom-6 right-6 z-40 w-14 h-14 bg-gray-900 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-gray-800 transition-transform active:scale-95"
-                    aria-label="Add Item"
-                  >
-                    <Plus className="w-6 h-6" />
-                  </button>
                 </>
               )}
               {/* Allow non-admins to upload docs too if active tab is docs */}
@@ -3743,7 +3780,7 @@ addNotification('Error', 'Failed to complete task', 'error');
       </div>
 
       {/* Navigation Tabs - Mobile Optimized */}
-      <div ref={tabsContainerRef} className="bg-gray-50 overflow-x-auto md:overflow-hidden [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded [&:hover::-webkit-scrollbar-thumb]:bg-gray-400 hover:[scrollbar-color:rgb(107_114_128)_transparent]" style={{scrollbarWidth: 'thin', scrollbarColor: 'transparent transparent'}}>
+      <div ref={tabsContainerRef} className="bg-gray-50 overflow-x-auto md:overflow-hidden [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded scrollbar-hide">
         <div className="flex gap-1 md:gap-6 px-4 md:px-6 min-w-max md:min-w-0 md:w-full md:justify-center">
           {[
             { id: 'discovery', label: 'Chat', icon: FileText, hidden: isVendor || isClient ? false : false },
@@ -3778,11 +3815,180 @@ addNotification('Error', 'Failed to complete task', 'error');
         className="flex-1 overflow-y-auto bg-gray-50 border-t border-gray-200"
       >
         
-        {/* PHASE 1: CHAT */}
+        {/* PHASE 1: CHAT - WhatsApp-like mobile flow */}
         {activeTab === 'discovery' && !isVendor && (
-          <div className="max-w-6xl mx-auto p-4 md:p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
-              <aside className="lg:col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm p-4 md:p-5 space-y-4">
+          <div className="max-w-6xl mx-auto">
+            {/* Mobile: Show Chat List or Detail (full screen) */}
+            <div className="block lg:hidden">
+              {!selectedChatId ? (
+                // Chat List on Mobile
+                <div className="p-4 space-y-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-gray-900">Chats</h3>
+                    <span className="text-xs font-semibold text-gray-500">{chatThreads.length} threads</span>
+                  </div>
+
+                  {canEditProject && (
+                    <div className="space-y-2 mb-4">
+                      <button
+                        onClick={openOrCreateGroupChat}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800"
+                      >
+                        <Users className="w-4 h-4" /> Group Chat
+                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        {directChatTargets.map(target => (
+                          <button
+                            key={target.id}
+                            onClick={() => openOrCreateDirectChat(target)}
+                            className="px-2.5 py-1.5 text-xs font-medium rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100"
+                          >
+                            {target.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto">
+                    {chatThreads.length === 0 ? (
+                      <div className="text-center py-8 border border-dashed border-gray-200 rounded-lg">
+                        <p className="text-sm text-gray-400">No chats yet. Start a new conversation.</p>
+                      </div>
+                    ) : (
+                      chatThreads.map(chat => {
+                        const lastMessage = [...(meetingComments[chat.id] || [])].sort((a, b) => parseChatTimestamp(b.timestamp) - parseChatTimestamp(a.timestamp))[0];
+                        return (
+                          <button
+                            key={chat.id}
+                            onClick={() => setSelectedChatId(chat.id)}
+                            className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-gray-900 transition-colors bg-white"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-bold text-gray-900 truncate">{getChatTitle(chat)}</p>
+                              <span className="text-[10px] text-gray-500 whitespace-nowrap">{formatRelativeTime(lastMessage?.timestamp || chat.date)}</span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1 truncate">{lastMessage?.text || 'No messages yet'}</p>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ) : (
+                // Chat Detail on Mobile (Full Screen)
+                <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 bg-white z-[400] flex flex-col">
+                  {selectedChat && (
+                    <>
+                      <div className="px-4 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedChatId(null)}
+                            className="p-2 -ml-2 text-gray-500 hover:text-gray-900 rounded-full hover:bg-gray-100 transition-colors"
+                            title="Back to chats"
+                          >
+                            <ChevronLeft className="w-6 h-6" />
+                          </button>
+                          <div className="flex-1">
+                            <h4 className="text-base font-bold text-gray-900">{getChatTitle(selectedChat)}</h4>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {(selectedChat.attendees || []).map(attendeeId => {
+                                const member = discussionMembers.find(m => m.id === attendeeId);
+                                if (!member) return null;
+                                return (
+                                  <span key={attendeeId} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                                    {member.name}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                        {canEditProject && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => {
+                                setEditingMeeting(selectedChat);
+                                setIsMeetingModalOpen(true);
+                              }}
+                              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded"
+                              title="Edit chat"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDeletingMeeting(selectedChat);
+                                setIsMeetingDeleteConfirmOpen(true);
+                              }}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-gray-100 rounded"
+                              title="Delete chat"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-h-0 px-4 py-4 overflow-y-auto space-y-3 bg-gray-50">
+                        {selectedChatMessages.length === 0 ? (
+                          <div className="h-full min-h-[220px] grid place-items-center text-sm text-gray-400">No messages yet.</div>
+                        ) : (
+                          selectedChatMessages.map(message => {
+                            const isMine = message.userId === user.id;
+                            const author = discussionMembers.find(m => m.id === message.userId);
+                            return (
+                              <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[82%] rounded-2xl px-3 py-2 shadow-sm ${isMine ? 'bg-gray-900 text-white rounded-br-sm' : 'bg-white text-gray-900 rounded-bl-sm border border-gray-200'}`}>
+                                  {!isMine && (
+                                    <p className="text-[11px] font-semibold text-gray-500 mb-1">{author?.name || message.userName || 'Unknown'}</p>
+                                  )}
+                                  <p className="text-sm whitespace-pre-wrap break-words">{message.text}</p>
+                                  <p className={`text-[10px] mt-1 ${isMine ? 'text-gray-300' : 'text-gray-400'}`}>{formatRelativeTime(message.timestamp)}</p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                        <div ref={messagesEndRef} />
+                      </div>
+
+                      <div className="p-3 border-t border-gray-100 bg-white">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={newMeetingComment[selectedChat.id] || ''}
+                            onChange={(e) => setNewMeetingComment(prev => ({ ...prev, [selectedChat.id]: e.target.value }))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !sendingMeetingComment[selectedChat.id]) {
+                                e.preventDefault();
+                                handleAddMeetingComment(selectedChat.id);
+                              }
+                            }}
+                            placeholder="Type a message"
+                            disabled={!!sendingMeetingComment[selectedChat.id]}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                          />
+                          <button
+                            onClick={() => handleAddMeetingComment(selectedChat.id)}
+                            disabled={!!sendingMeetingComment[selectedChat.id]}
+                            className="h-10 w-10 grid place-items-center rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-60"
+                            title="Send message"
+                          >
+                            {sendingMeetingComment[selectedChat.id] ? <Spinner size="sm" className="text-white" /> : <Send className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Desktop: Show Chat List and Detail Side-by-Side */}
+            <div className="hidden lg:grid grid-cols-12 gap-4 md:gap-6 p-4 md:p-6">
+              <aside className="col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm p-4 md:p-5 space-y-4 h-[600px] flex flex-col">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg md:text-base font-bold text-gray-900">Chats</h3>
                   <span className="text-xs font-semibold text-gray-500">{chatThreads.length} threads</span>
@@ -3839,22 +4045,24 @@ addNotification('Error', 'Failed to complete task', 'error');
                 </div>
               </aside>
 
-              <section className="lg:col-span-8 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col min-h-[560px]">
+              <section className="col-span-8 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col min-h-[560px]">
                 {selectedChat ? (
                   <>
                     <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
-                      <div>
-                        <h4 className="text-base font-bold text-gray-900">{getChatTitle(selectedChat)}</h4>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {(selectedChat.attendees || []).map(attendeeId => {
-                            const member = discussionMembers.find(m => m.id === attendeeId);
-                            if (!member) return null;
-                            return (
-                              <span key={attendeeId} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                                {member.name}
-                              </span>
-                            );
-                          })}
+                      <div className="flex items-center gap-3 flex-1">
+                        <div>
+                          <h4 className="text-base font-bold text-gray-900">{getChatTitle(selectedChat)}</h4>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {(selectedChat.attendees || []).map(attendeeId => {
+                              const member = discussionMembers.find(m => m.id === attendeeId);
+                              if (!member) return null;
+                              return (
+                                <span key={attendeeId} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                                  {member.name}
+                                </span>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                       {canEditProject && (
@@ -3883,7 +4091,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                       )}
                     </div>
 
-                    <div className="flex-1 px-4 md:px-6 py-4 overflow-y-auto space-y-3 bg-gray-50">
+                    <div className="flex-1 min-h-0 px-4 md:px-6 py-4 overflow-y-auto space-y-3 bg-gray-50">
                       {selectedChatMessages.length === 0 ? (
                         <div className="h-full min-h-[220px] grid place-items-center text-sm text-gray-400">No messages yet.</div>
                       ) : (
@@ -3903,6 +4111,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                           );
                         })
                       )}
+                      <div ref={messagesEndRef} />
                     </div>
 
                     <div className="p-3 md:p-4 border-t border-gray-100 bg-white">
@@ -3948,6 +4157,14 @@ addNotification('Error', 'Failed to complete task', 'error');
         {/* PHASE 2: PLANNING (PRIORITY BOARD & PLAN) */}
         {activeTab === 'plan' && (
           <div className="space-y-6 h-full flex flex-col p-4 md:p-6">
+            {!creativePlanSummary ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <p className="text-gray-500 text-lg">No plan has been assigned to this project.</p>
+                  <p className="text-gray-400 text-sm mt-2">Select a plan when editing the project.</p>
+                </div>
+              </div>
+            ) : (
             <div className="space-y-8 p-4 md:p-6">
                 {/* Package Card - Based on Project Package Type */}
                 <div 
@@ -4049,6 +4266,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                   </div>
                 </div>
               </div>
+            )}
           </div>
         )}
 
@@ -4317,7 +4535,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                   </h4>
                   {(() => {
                     return (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                         <div className="p-4 md:p-6 bg-blue-50 rounded-lg border border-blue-100">
                           <p className="text-sm md:text-xs text-blue-600 font-bold mb-1">Estimated</p>
                           <p className="text-2xl md:text-xl font-bold text-blue-700">₹{(project.initialBudget || project.budget).toLocaleString()}</p>
@@ -5106,7 +5324,7 @@ addNotification('Error', 'Failed to complete task', 'error');
 
         {/* TIMELINE TAB */}
         {activeTab === 'timeline' && !isVendor && (
-           <div className="max-w-3xl mx-auto p-4 md:p-8">
+           <div className="max-w-lg mx-auto p-4 md:p-8">
              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-8 overflow-hidden">
                <h3 className="text-xl md:text-lg font-bold text-gray-800 mb-6">Project Timeline</h3>
                <div className="relative border-l-2 border-gray-100 ml-3 space-y-8">
@@ -5139,7 +5357,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                          </div>
                          <div className="text-sm md:text-xs text-gray-400 mt-2 sm:mt-0 font-mono whitespace-nowrap">
                             <div>{formatDateToIndian(timeline.endDate || timeline.startDate)}</div>
-                            <div className="text-gray-300">{new Date(timeline.endDate || timeline.startDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
+                            <div className="text-gray-300">{new Date(timeline.createdAt || timeline.endDate || timeline.startDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
                          </div>
                       </div>
                     </div>
@@ -5305,8 +5523,8 @@ addNotification('Error', 'Failed to complete task', 'error');
       {/* ... (Modals remain unchanged) ... */}
       {/* Invite Member Modal */}
       {isMemberModalOpen && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm max-h-[90vh] flex flex-col animate-fade-in">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
+           <div className="bg-white shadow-xl w-full max-w-lg flex flex-col animate-fade-in rounded-2xl max-h-[90vh]">
                <div className="p-4 md:p-6 border-b border-gray-100 flex-shrink-0">
                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2"><UserIcon className="w-5 h-5"/> Add to Project</h3>
                </div>
@@ -5461,9 +5679,9 @@ addNotification('Error', 'Failed to complete task', 'error');
 
       {/* Financial Transaction Modal */}
       {isTransactionModalOpen && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
            {/* ... (Same as before) ... */}
-           <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col animate-fade-in">
+           <div className="bg-white shadow-xl w-full max-w-lg flex flex-col animate-fade-in rounded-2xl max-h-[90vh]">
               {/* Fixed Header */}
               <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
                 <h3 className="text-2xl md:text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -6224,8 +6442,8 @@ addNotification('Error', 'Failed to complete task', 'error');
 
       {/* Document Upload Modal */}
       {isDocModalOpen && createPortal(
-         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col animate-fade-in">
+         <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
+            <div className="bg-white shadow-xl w-full max-w-lg flex flex-col animate-fade-in rounded-2xl max-h-[90vh]">
                {/* Fixed Header */}
                <div className="p-4 md:p-6 border-b border-gray-100 flex-shrink-0">
                    <h3 className="text-xl md:text-lg font-bold flex items-center gap-2 text-gray-900"><Upload className="w-5 h-5 md:w-4 md:h-4"/> Upload Document</h3>
@@ -6234,7 +6452,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                {/* Scrollable Content */}
                <div className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-thin space-y-4">
                   <input 
-                    type="text" placeholder="Document Name (e.g. FloorPlan.pdf) - optional when uploading files" 
+                    type="text" placeholder="Document Name (e.g. Brand Guidelines.pdf, Wireframes.png) - optional when uploading files" 
                     className={`${getInputClass(showDocErrors && !newDoc.name && selectedFiles.length === 0)} text-base md:text-sm`}
                     value={newDoc.name} onChange={e => setNewDoc({...newDoc, name: e.target.value})}
                   />
@@ -6269,28 +6487,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                      </div>
                   </div>
 
-                  {currentTasks.length > 0 && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                       <label htmlFor="attach-task-select" className="text-base md:text-xs font-bold text-blue-600 uppercase mb-2 block">Attach to Task (Optional):</label>
-                       <select 
-                         id="attach-task-select"
-                         title="Select a task to attach documents to"
-                         aria-label="Select a task to attach documents to"
-                         value={newDoc.attachToTaskId || ''}
-                         onChange={e => {
-                           setNewDoc({...newDoc, attachToTaskId: e.target.value || undefined});
-                         }}
-                         className="w-full p-2 border border-blue-300 rounded bg-white text-base md:text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       >
-                         <option value="">-- Don't attach to any task --</option>
-                         {currentTasks.map(task => (
-                           <option key={task.id} value={task.id}>
-                             {task.title} ({task.status})
-                           </option>
-                         ))}
-                       </select>
-                    </div>
-                  )}
+
 
                   <div 
                     className="bg-gray-50 p-4 md:p-6 rounded-lg border-2 border-dashed border-gray-300 text-base md:text-sm text-gray-500 hover:bg-gray-100 hover:border-gray-400 transition-colors cursor-pointer relative"
@@ -6299,7 +6496,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                      {selectedFiles.length > 0 ? (
                        <div className="flex flex-col items-start gap-2">
                           <div className="w-full flex items-center gap-2">
-                            <FileIcon className="w-8 h-8 text-blue-500 flex-shrink-0" />
+                            <Upload className="w-8 h-8 text-blue-500 flex-shrink-0" />
                             <div className="flex-1 text-left">
                               <p className="font-bold text-base md:text-sm text-gray-800">{selectedFiles.length} file(s) selected</p>
                               <p className="text-sm md:text-xs text-gray-400">
@@ -6307,20 +6504,30 @@ addNotification('Error', 'Failed to complete task', 'error');
                               </p>
                             </div>
                           </div>
-                          <div className="w-full mt-2 max-h-32 overflow-y-auto border-t border-gray-200 pt-2">
+                          <div className="w-full mt-2 grid grid-cols-3 gap-2 max-h-48 overflow-y-auto border-t border-gray-200 pt-2 p-1">
                             {selectedFiles.map((file, idx) => (
-                              <div key={idx} className="flex items-center justify-between text-sm md:text-xs text-gray-600 bg-white p-1.5 rounded mb-1">
-                                <span className="truncate flex-1">{file.name}</span>
+                              <div key={idx} className="relative group aspect-square rounded-lg border border-gray-200 overflow-hidden bg-white">
+                                {selectedFilePreviews[file.name] ? (
+                                  <img src={selectedFilePreviews[file.name]} alt={file.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex flex-col items-center justify-center p-1 bg-gray-50">
+                                    <FileIcon className="w-6 h-6 text-gray-400" />
+                                    <span className="text-[8px] text-gray-500 truncate w-full text-center mt-1">{file.name}</span>
+                                  </div>
+                                )}
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedFiles(selectedFiles.filter((_, i) => i !== idx));
+                                    const newPreviews = { ...selectedFilePreviews };
+                                    delete newPreviews[file.name];
+                                    setSelectedFilePreviews(newPreviews);
                                   }}
-                                  className="ml-2 text-gray-400 hover:text-red-500 flex-shrink-0 text-lg md:text-base"
+                                  className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                                   title="Remove file"
                                 >
-                                  ×
+                                  <X className="w-3 h-3" />
                                 </button>
                               </div>
                             ))}
@@ -6339,7 +6546,17 @@ addNotification('Error', 'Failed to complete task', 'error');
                        ref={fileInputRef}
                        onChange={(e) => {
                           const files = Array.from(e.target.files || []);
-                          setSelectedFiles(files);
+                          setSelectedFiles(prev => [...prev, ...files]);
+                          files.forEach(file => {
+                            if (file.type.startsWith('image/')) {
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                setSelectedFilePreviews(prev => ({ ...prev, [file.name]: reader.result as string }));
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          });
+                          if (fileInputRef.current) fileInputRef.current.value = '';
                        }}
                        className="hidden"
                        title="Select files to upload"
@@ -6365,8 +6582,8 @@ addNotification('Error', 'Failed to complete task', 'error');
 
       {/* Edit SharedWith Modal (Admin only) */}
       {isShareEditOpen && editingSharedDoc && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col animate-fade-in">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
+          <div className="bg-white shadow-xl w-full max-w-lg flex flex-col animate-fade-in rounded-2xl max-h-[90vh]">
             <div className="p-4 md:p-6 border-b border-gray-100 flex-shrink-0">
               <h3 className="text-lg font-bold">Edit Shared Users</h3>
               <p className="text-sm text-gray-500">Modify who can access this document after approval.</p>
@@ -6417,7 +6634,7 @@ addNotification('Error', 'Failed to complete task', 'error');
       {isTaskModalOpen && editingTask && createPortal(
         <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
            {/* ... Task Modal Logic ... */}
-           <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl h-[90vh] flex flex-col animate-fade-in overflow-hidden">
+           <div className="bg-white shadow-xl w-full flex flex-col animate-fade-in overflow-hidden rounded-2xl max-h-[90vh] md:max-w-4xl">
               {/* Modal Header */}
               <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                 <div className="flex items-center gap-2">
@@ -7027,7 +7244,7 @@ addNotification('Error', 'Failed to complete task', 'error');
       {/* Document Detail Modal with Comments */}
       {isDocDetailOpen && selectedDocument && createPortal(
         <div className="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4">
-           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl h-[90vh] flex flex-col animate-fade-in overflow-hidden">
+           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg h-[90vh] flex flex-col animate-fade-in overflow-hidden">
               {/* Modal Header */}
               <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                 <div className="flex items-center gap-3">
@@ -7337,7 +7554,7 @@ addNotification('Error', 'Failed to complete task', 'error');
 
       {/* Vendor Billing Report Modal */}
       {selectedVendorForBilling && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-fade-in overflow-hidden">
             {/* Header */}
             <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
@@ -7743,8 +7960,8 @@ addNotification('Error', 'Failed to complete task', 'error');
 
       {/* Designer Details Modal */}
       {selectedDesignerForDetails && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-fade-in overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
+          <div className="bg-white shadow-xl w-full flex flex-col animate-fade-in overflow-hidden rounded-2xl max-h-[90vh] md:max-w-4xl">
             {/* Header */}
             <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
               <div className="flex items-center gap-4">
@@ -7903,8 +8120,8 @@ addNotification('Error', 'Failed to complete task', 'error');
 
       {/* Additional Budget Modal */}
       {isAdditionalBudgetModalOpen && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col animate-fade-in overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
+          <div className="bg-white shadow-xl w-full max-w-lg flex flex-col animate-fade-in overflow-hidden rounded-2xl max-h-[90vh]">
             {/* Header */}
             <div className="p-4 md:p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-green-50 flex-shrink-0">
               <h3 className="text-xl md:text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -8067,7 +8284,7 @@ addNotification('Error', 'Failed to complete task', 'error');
       {/* Task Documents Modal */}
       {isTaskDocModalOpen && editingTask && createPortal(
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl h-[80vh] flex flex-col overflow-hidden">
+          <div className="bg-white shadow-xl w-full flex flex-col overflow-hidden rounded-2xl max-h-[90vh] md:max-w-5xl">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
               <div className="flex items-center gap-2">
                 <FileIcon className="w-5 h-5 text-blue-600" />
@@ -8250,10 +8467,10 @@ addNotification('Error', 'Failed to complete task', 'error');
 
       {/* Project Delete Confirmation Modal */}
       {isProjectDeleteConfirmOpen && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-start justify-center pt-20 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md animate-fade-in border border-gray-200">
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white shadow-2xl w-full md:max-w-md animate-fade-in border border-gray-200 rounded-2xl overflow-hidden max-h-[90vh]">
             {/* Header */}
-            <div className="p-6 border-b border-gray-100 bg-red-50">
+            <div className="p-6 border-b border-gray-100 bg-red-50 rounded-t-2xl">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
                   <AlertCircle className="w-6 h-6 text-red-600" />
@@ -8278,7 +8495,7 @@ addNotification('Error', 'Failed to complete task', 'error');
             </div>
 
             {/* Footer */}
-            <div className="p-6 border-t border-gray-100 flex gap-3 justify-end bg-gray-50 rounded-b-xl">
+            <div className="p-6 border-t border-gray-100 flex gap-3 justify-end bg-gray-50 rounded-b-2xl">
               <button
                 onClick={() => setIsProjectDeleteConfirmOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -8301,10 +8518,10 @@ addNotification('Error', 'Failed to complete task', 'error');
 
       {/* Transaction Delete Confirmation Modal */}
       {isTransactionDeleteConfirmOpen && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-start justify-center pt-20 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md animate-fade-in border border-gray-200">
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white shadow-2xl w-full md:max-w-md animate-fade-in border border-gray-200 rounded-2xl overflow-hidden max-h-[90vh]">
             {/* Header */}
-            <div className="p-6 border-b border-gray-100 bg-red-50">
+            <div className="p-6 border-b border-gray-100 bg-red-50 rounded-t-2xl">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
                   <AlertCircle className="w-6 h-6 text-red-600" />
@@ -8329,7 +8546,7 @@ addNotification('Error', 'Failed to complete task', 'error');
             </div>
 
             {/* Footer */}
-            <div className="p-6 border-t border-gray-100 flex gap-3 justify-end bg-gray-50 rounded-b-xl">
+            <div className="p-6 border-t border-gray-100 flex gap-3 justify-end bg-gray-50 rounded-b-2xl">
               <button
                 onClick={() => {
                   setIsTransactionDeleteConfirmOpen(false);
@@ -8369,8 +8586,8 @@ addNotification('Error', 'Failed to complete task', 'error');
 
       {/* Lead Designer Removal Confirmation Modal */}
       {isLeadDesignerRemovalConfirmOpen && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-start justify-center pt-20 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md animate-fade-in border border-gray-200">
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white shadow-2xl w-full animate-fade-in border border-gray-200 rounded-2xl max-h-[90vh]">
             {/* Header */}
             <div className="p-6 border-b border-gray-100 bg-orange-50">
               <div className="flex items-center gap-3">
@@ -8433,6 +8650,16 @@ addNotification('Error', 'Failed to complete task', 'error');
         confirmText="Save & Exit"
         cancelText="Don't Save"
         variant="warning"
+      />
+      {/* Status Change Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={isStatusConfirmOpen}
+        title={statusConfirmData.title}
+        message={statusConfirmData.message}
+        onConfirm={statusConfirmData.onConfirm}
+        onCancel={() => setIsStatusConfirmOpen(false)}
+        confirmLabel="Confirm"
+        isDestructive={statusConfirmData.nextStatus === ProjectStatus.ON_HOLD}
       />
     </div>
   );

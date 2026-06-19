@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom';
 import { getDoc, doc, collection, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { db } from '../services/firebaseConfig';
 import { User, Role, Project, TaskStatus, FinancialRecord } from '../types';
-import { Mail, Phone, Building2, Plus, X, CreditCard, Tag, ChevronRight, DollarSign, CheckCircle, Briefcase, Share2, Eye, Download, Copy, Edit, FileText, Lock, MessageCircle } from 'lucide-react';
+import { Mail, Phone, Building2, Plus, X, CreditCard, Tag, ChevronRight, DollarSign, CheckCircle, Briefcase, Share2, Eye, Download, Copy, Edit, FileText, Lock, MessageCircle, Trash2, AlertCircle } from 'lucide-react';
 import { useNotifications } from '../contexts/NotificationContext';
 import { useLoading } from '../contexts/LoadingContext';
 import { useAuth } from '../contexts/AuthContext';
 import { CATEGORY_ORDER } from '../constants'; // Import shared order
 import { calculateTaskProgress, formatDateToIndian } from '../utils/taskUtils'; // Task progress calculation
-import { createUserInFirebase, updateUserInFirebase } from '../services/userManagementService'; // Firebase user creation
+import { createUserInFirebase, updateUserInFirebase, deleteUserFromFirebase } from '../services/userManagementService'; // Firebase user creation
 import { updateProject, subscribeToAvailableTenants } from '../services/firebaseService'; // Project updates
 import { getProjectFinancialRecords } from '../services/financialService'; // Financial records
 import { AvatarCircle, getInitials } from '../utils/avatarUtils'; // Avatar utilities
@@ -63,8 +63,12 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const [welcomeModalUser, setWelcomeModalUser] = useState<User | null>(null);
 
-  // --- Collapsible Designer Tasks State ---
+  // --- Designer Tasks State ---
   const [expandedDesignerTasks, setExpandedDesignerTasks] = useState<Record<string, boolean>>({});
+
+  // --- Delete User State ---
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   // --- Real-time Projects State ---
   // Use parent's projects prop as the real-time source since App.tsx already subscribes
@@ -427,6 +431,32 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
     }
   };
 
+  const handleApproveUser = async (userToApprove: User) => {
+    try {
+      await updateUserInFirebase({ ...userToApprove, isApproved: true });
+      addNotification('Success', `${userToApprove.name} has been approved`, 'success');
+    } catch (error) {
+      console.error('Error approving user:', error);
+      addNotification('Error', 'Failed to approve user', 'error');
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+    try {
+      showLoading(`Deleting ${userToDelete.role}...`);
+      await deleteUserFromFirebase(userToDelete);
+      addNotification('Success', `${userToDelete.role} deleted successfully`, 'success');
+      setIsDeleteModalOpen(false);
+      setUserToDelete(null);
+    } catch (error: any) {
+      console.error('Error deleting user:', error);
+      addNotification('Error', error.message || 'Failed to delete user', 'error');
+    } finally {
+      hideLoading();
+    }
+  };
+
   const getInputClass = (value?: string) => `
     w-full px-3 py-2 border rounded-lg focus:outline-none transition-all
     bg-white text-gray-900 placeholder-gray-400
@@ -438,6 +468,14 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
     <div className="relative bg-white rounded-2xl border border-slate-200/60 overflow-hidden cursor-pointer shadow-sm hover:shadow-xl transition-shadow h-full flex flex-col">
         {/* Subtle top gradient banner */}
         <div className={`h-20 w-full absolute top-0 left-0 bg-gradient-to-br opacity-20 ${user.role === Role.CLIENT ? 'from-blue-400 via-sky-300 to-cyan-300' : 'from-indigo-500 via-purple-400 to-fuchsia-300'}`}></div>
+        
+        {user.isApproved === false && (
+          <div className="absolute top-3 right-3 z-20">
+            <span className="bg-amber-100 text-amber-800 text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full shadow-sm border border-amber-200">
+              Pending Approval
+            </span>
+          </div>
+        )}
         
         <div className="p-6 flex-1 relative z-10 pt-8">
             <div className="flex items-start justify-between gap-4">
@@ -491,34 +529,61 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
             </div>
         </div>
         <div className="bg-slate-50/80 px-6 py-4 border-t border-slate-100 flex justify-between items-center mt-auto relative z-10 backdrop-blur-sm">
-            {user.role === Role.DESIGNER ? (
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedDesigner(user);
-                  setIsDesignerDetailOpen(true);
-                }}
-                className="text-xs uppercase tracking-wider font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
-              >
-                View Details <ChevronRight className="w-3 h-3" />
-              </button>
-            ) : (
-              // If current user is a Designer, do not allow editing client details
-              (currentUser?.role === Role.DESIGNER && user.role === Role.CLIENT) ? (
-                <button className="text-xs uppercase tracking-wider font-bold text-slate-400 cursor-not-allowed" title="Designers cannot edit client profiles">View Profile</button>
-              ) : (
+            <div className="flex items-center gap-3">
+              {user.role === Role.DESIGNER ? (
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleEditUser(user);
+                    setSelectedDesigner(user);
+                    setIsDesignerDetailOpen(true);
                   }}
-                  className="text-xs uppercase tracking-wider font-bold text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1"
+                  className="text-xs uppercase tracking-wider font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
                 >
-                  View Profile <ChevronRight className="w-3 h-3" />
+                  View Details <ChevronRight className="w-3 h-3" />
                 </button>
-              )
-            )}
-            {currentUser?.role === Role.DESIGNER ? (
+              ) : (
+                // If current user is a Designer, do not allow editing client details
+                (currentUser?.role === Role.DESIGNER && user.role === Role.CLIENT) ? (
+                  <button className="text-xs uppercase tracking-wider font-bold text-slate-400 cursor-not-allowed" title="Designers cannot edit client profiles">View Profile</button>
+                ) : (
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditUser(user);
+                    }}
+                    className="text-xs uppercase tracking-wider font-bold text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1"
+                  >
+                    View Profile <ChevronRight className="w-3 h-3" />
+                  </button>
+                )
+              )}
+
+              {currentUser?.role === Role.ADMIN && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setUserToDelete(user);
+                    setIsDeleteModalOpen(true);
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
+                  title="Delete profile"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {user.isApproved === false && currentUser?.role === Role.ADMIN ? (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleApproveUser(user);
+                }}
+                className="text-xs uppercase tracking-wider font-bold text-green-700 bg-green-50 border border-green-200 shadow-sm hover:text-green-800 hover:border-green-300 hover:bg-green-100 px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5"
+              >
+                <CheckCircle className="w-3.5 h-3.5" /> Approve
+              </button>
+            ) : currentUser?.role === Role.DESIGNER ? (
               <button
                 className="text-xs uppercase tracking-wider font-bold text-slate-400 cursor-not-allowed"
                 title="Designers cannot assign users to projects"
@@ -595,9 +660,9 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
 
       {/* Add User Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 pt-24">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[75vh] overflow-hidden animate-fade-in flex flex-col">
-            <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50 flex-shrink-0">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
+          <div className="bg-white shadow-xl w-full md:max-w-xl animate-fade-in flex flex-col rounded-2xl overflow-hidden max-h-[90vh]">
+            <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50 flex-shrink-0 rounded-t-2xl">
               <h3 className="text-lg font-bold text-gray-900">
                 {editingUser
                   ? `Edit ${editingUser.role} Profile`
@@ -808,9 +873,9 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
 
       {/* Assign to Project Modal */}
       {isAssignModalOpen && userToAssign && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md animate-fade-in max-h-[80vh] flex flex-col">
-            <div className="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-shrink-0">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
+          <div className="bg-white shadow-xl w-full md:max-w-md animate-fade-in flex flex-col rounded-2xl overflow-hidden max-h-[90vh]">
+            <div className="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-shrink-0 rounded-t-2xl">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">Assign to Project</h3>
                 <p className="text-xs text-gray-500">Add {userToAssign.name} to a project team</p>
@@ -868,10 +933,10 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
 
       {/* Designer Details Modal */}
       {isDesignerDetailOpen && selectedDesigner && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
+          <div className="bg-white shadow-xl w-full overflow-y-auto animate-fade-in rounded-2xl max-h-[90vh] md:max-w-2xl">
             {/* Header */}
-            <div className="p-6 border-b border-gray-100 bg-gray-50 sticky top-0 flex justify-between items-center">
+            <div className="p-6 border-b border-gray-100 bg-gray-50 sticky top-0 flex justify-between items-center rounded-t-2xl">
               <div className="flex items-center gap-4">
                 <AvatarCircle avatar={selectedDesigner.avatar} name={selectedDesigner.name} size="md" role={String(selectedDesigner.role).toLowerCase()} />
                 <div>
@@ -1022,10 +1087,10 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
 
       {/* Share Vendor Report Modal */}
       {isShareModalOpen && selectedVendor && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md animate-fade-in">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
+          <div className="bg-white shadow-xl w-full md:max-w-lg animate-fade-in rounded-2xl overflow-hidden max-h-[90vh]">
             {/* Header */}
-            <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+            <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center rounded-t-2xl">
               <h3 className="text-lg font-bold text-gray-900">Share Vendor Report</h3>
               <button onClick={() => setIsShareModalOpen(false)} className="text-gray-400 hover:text-gray-600" title="Close share report dialog">
                 <X className="w-5 h-5" />
@@ -1122,12 +1187,12 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
         document.body
       )}
 
-      {/* Accounts Modal */}
+      {/* Account Details Modal */}
       {isAccountsModalOpen && selectedVendorForAccounts && createPortal(
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto animate-fade-in">
+        <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
+          <div className="bg-white shadow-xl w-full overflow-y-auto animate-fade-in rounded-2xl overflow-hidden max-h-[90vh] md:max-w-3xl">
             {/* Header */}
-            <div className="p-6 border-b border-gray-100 bg-gray-50 sticky top-0 flex justify-between items-center">
+            <div className="p-6 border-b border-gray-100 bg-gray-50 sticky top-0 flex justify-between items-center rounded-t-2xl">
               <div className="flex items-center gap-4">
                 <AvatarCircle avatar={selectedVendorForAccounts.avatar} name={selectedVendorForAccounts.name} size="md" role={String(selectedVendorForAccounts.role).toLowerCase()} />
                 <div>
@@ -1275,7 +1340,7 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
       {welcomeModalUser && (
         <>
           <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4" style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0}}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-8 text-center" style={{position: 'relative', zIndex: 10000}}>
+            <div className="bg-white shadow-2xl w-full p-8 text-center rounded-2xl max-h-[90vh]" style={{position: 'relative', zIndex: 10000}}>
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
                 <CheckCircle className="w-8 h-8 text-green-600" />
               </div>
@@ -1328,6 +1393,56 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
         </>
       )}
 
+      {/* Delete User Confirmation Modal */}
+      {isDeleteModalOpen && userToDelete && createPortal(
+        <div className="fixed inset-0 bg-black/50 z-[500] flex items-center justify-center p-4">
+          <div className="bg-white shadow-2xl w-full md:max-w-md animate-fade-in border border-gray-200 rounded-2xl overflow-hidden max-h-[90vh]">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-100 bg-red-50 rounded-t-2xl">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                  <AlertCircle className="w-6 h-6 text-red-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Delete {userToDelete.role}?</h2>
+                  <p className="text-sm text-gray-600 mt-1">This action cannot be undone.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <p className="text-sm text-gray-700 mb-4">
+                Are you sure you want to delete the profile for <span className="font-bold text-gray-900">{userToDelete.name}</span>?
+              </p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-xs text-red-700">
+                  <span className="font-bold">⚠️ Warning:</span> This will remove their access to the platform and all associated profile data.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-100 flex gap-3 justify-end bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                title="Cancel deletion"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteUser}
+                className="px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+                title="Confirm deletion"
+              >
+                <Trash2 className="w-4 h-4" /> Delete Profile
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

@@ -3,7 +3,7 @@ import { getAuth } from "firebase/auth";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAnalytics } from "firebase/analytics";
-import { getMessaging } from "firebase/messaging";
+import { getMessaging, isSupported } from "firebase/messaging";
 import { getFunctions } from "firebase/functions";
 
 // Fix for "mgt.clearMarks is not a function" error
@@ -35,14 +35,25 @@ export const storage = getStorage(app);
 export const analytics = getAnalytics(app);
 export const functions = getFunctions(app, 'us-central1'); // Default region
 
-let messagingInstance;
-try {
-  messagingInstance = getMessaging(app);
-} catch (error) {
-  console.warn("Firebase Messaging not supported:", error);
-  messagingInstance = null;
+// Initialize messaging lazily or check support
+export let messaging: any = null;
+
+// Only initialize messaging if supported (async check)
+if (typeof window !== 'undefined') {
+  isSupported().then(supported => {
+    if (supported) {
+      try {
+        messaging = getMessaging(app);
+      } catch (err) {
+        console.warn("Failed to initialize Firebase Messaging:", err);
+      }
+    } else {
+      console.log("Firebase Messaging is not supported in this browser/environment.");
+    }
+  }).catch(err => {
+    console.error("Error checking messaging support:", err);
+  });
 }
-export const messaging = messagingInstance;
 
 // Enable offline persistence for Firestore
 // DISABLED: Causes cross-tenant data leakage when switching users

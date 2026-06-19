@@ -170,8 +170,8 @@ const AddDesigner_v2: React.FC<AddDesignerModalProps> = ({ onClose, onSave, curr
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full my-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[400] flex items-center justify-center p-4 animate-fade-in">
+      <div className="bg-white shadow-2xl w-full max-w-lg max-h-[95vh] flex flex-col rounded-2xl overflow-hidden">
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4 flex items-center justify-between rounded-t-2xl">
           <div className="flex items-center gap-3">
@@ -214,7 +214,8 @@ const AddDesigner_v2: React.FC<AddDesignerModalProps> = ({ onClose, onSave, curr
         </div>
 
         {/* Content */}
-        <form onSubmit={handleCreate} className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
+        <div className="flex-1 overflow-y-auto">
+          <form onSubmit={handleCreate} className="p-6 space-y-5">
           {/* Profile Photo (Always visible) */}
           <div className="flex flex-col items-center mb-6">
             <div
@@ -487,10 +488,11 @@ const AddDesigner_v2: React.FC<AddDesignerModalProps> = ({ onClose, onSave, curr
             <AlertCircle className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-purple-800">Password will be auto-generated from phone number. Designer can change it after first login.</p>
           </div>
-        </form>
+          </form>
+        </div>
 
         {/* Action Buttons */}
-        <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex gap-3 rounded-b-2xl">
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}

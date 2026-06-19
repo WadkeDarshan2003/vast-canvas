@@ -17,7 +17,7 @@ const transporter = nodemailer.createTransport({
   port: parseInt(process.env.SMTP_PORT || "587"),
   secure: false,
   auth: {
-    user: process.env.EMAIL_USER,
+    user: process.env.EMAIL_USER || "hrishikesh@vastcanvas.in",
     pass: process.env.EMAIL_PASSWORD,
   },
 });
@@ -89,10 +89,12 @@ export const sendEmail = functions.https.onRequest(async (req, res) => {
       return;
     }
 
+    const emailSender = process.env.EMAIL_USER || "hrishikesh@vastcanvas.in";
+    
     // Send email
     const mailOptions = {
-      from: `Vast Canvas Support <${process.env.EMAIL_USER}>`,
-      replyTo: `Vast Canvas Support <${process.env.EMAIL_USER}>`,
+      from: `Vast Canvas Support <hrishikesh@vastcanvas.in>`,
+      replyTo: `Vast Canvas Support <hrishikesh@vastcanvas.in>`,
       to: to,
       subject: subject,
       html: htmlContent,

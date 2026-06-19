@@ -119,44 +119,67 @@ export const formatRelativeTime = (dateStr: string): string => {
 };
 
 // Date formatting utilities for Indian date format (DD/MM/YYYY)
-export const formatDateToIndian = (dateStr?: string): string => {
-  if (!dateStr) return '';
+export const formatDateToIndian = (value?: unknown): string => {
+  if (value === undefined || value === null) return '';
+
   try {
-    let date: Date;
-    
-    // Handle ISO format (YYYY-MM-DD)
-    if (dateStr.includes('-')) {
-      date = new Date(dateStr);
-    }
-    // Handle Indian format that might have been input (DD/MM/YYYY)
-    else if (dateStr.includes('/')) {
-      const parts = dateStr.split('/');
-      if (parts.length === 3) {
-        // Check if it's already in DD/MM/YYYY format
-        const day = parseInt(parts[0]);
-        const month = parseInt(parts[1]);
-        const year = parseInt(parts[2]);
-        
-        // If day is > 12, it's definitely DD/MM/YYYY format
-        if (day > 12) {
-          return dateStr; // Already in correct format
+    let date: Date | null = null;
+
+    if (value instanceof Date) {
+      date = value;
+    } else if (typeof value === 'number') {
+      date = new Date(value);
+    } else if (typeof value === 'object' && value && typeof (value as any).toDate === 'function') {
+      // Support Firestore Timestamp values.
+      date = (value as any).toDate();
+    } else if (typeof value === 'string') {
+      const dateStr = value.trim();
+      if (!dateStr || /^invalid date$/i.test(dateStr)) return '';
+
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+        const [dayStr, monthStr, yearStr] = dateStr.split('/');
+        const day = Number(dayStr);
+        const month = Number(monthStr);
+        const year = Number(yearStr);
+        const parsed = new Date(year, month - 1, day);
+
+        if (
+          parsed.getFullYear() === year &&
+          parsed.getMonth() === month - 1 &&
+          parsed.getDate() === day
+        ) {
+          return dateStr;
         }
-        // Try to construct date and validate
-        date = new Date(year, month - 1, day);
-      } else {
-        return dateStr;
+        return '';
       }
-    } else {
-      date = new Date(dateStr);
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [yearStr, monthStr, dayStr] = dateStr.split('-');
+        const day = Number(dayStr);
+        const month = Number(monthStr);
+        const year = Number(yearStr);
+        date = new Date(year, month - 1, day);
+
+        if (
+          date.getFullYear() !== year ||
+          date.getMonth() !== month - 1 ||
+          date.getDate() !== day
+        ) {
+          return '';
+        }
+      } else {
+        date = new Date(dateStr);
+      }
     }
-    
-    if (isNaN(date.getTime())) return dateStr; // Return as-is if invalid
+
+    if (!date || Number.isNaN(date.getTime())) return '';
+
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
     return `${day}/${month}/${year}`;
   } catch {
-    return dateStr;
+    return '';
   }
 };
 

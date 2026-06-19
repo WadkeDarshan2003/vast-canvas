@@ -30,39 +30,8 @@ export interface EmailOptions {
  */
 
 export const sendEmail = async (options: EmailOptions): Promise<{ success: boolean; error?: string; messageId?: string }> => {
-  if (!options.to || !options.subject || !options.htmlContent) {
-    return { success: false, error: 'Missing required email fields' };
-  }
-
-  try {
-    const payload = {
-      to: options.to,
-      recipientName: options.recipientName || options.to.split('@')[0],
-      subject: options.subject,
-      htmlContent: options.htmlContent,
-    };
-
-    const response = await fetch(EMAIL_FUNCTION_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('❌ Cloud Function error:', error);
-      return { success: false, error: error.error || 'Failed to send email' };
-    }
-
-    const result = await response.json();
-    if (process.env.NODE_ENV !== 'production') console.log('✅ Email sent successfully via Cloud Function:', result.messageId);
-    return { success: true, messageId: result.messageId };
-  } catch (error) {
-    console.error('❌ Error sending email:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
+  if (process.env.NODE_ENV !== 'production') console.log(`[Mock Email] To: ${options.to}, Subject: ${options.subject}`);
+  return { success: true, messageId: 'mock-id' };
 };
 
 

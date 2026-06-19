@@ -10,9 +10,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "moduleResolution": "NodeNext",
-    "downlevelIteration": true,
-    "ignoreDeprecations": "6.0"
+    "moduleResolution": "NodeNext"
   },
   "include": ["src"],
   "exclude": ["node_modules", "lib", "**/*.spec.ts"]

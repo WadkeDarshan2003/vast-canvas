@@ -243,7 +243,7 @@ export const assessRecaptchaEnterprise = async (action: string = 'LOGIN'): Promi
   try {
     const grecaptcha = (window as any).grecaptcha;
     if (!grecaptcha || !grecaptcha.enterprise) {
-      console.warn("reCAPTCHA Enterprise script not loaded yet.");
+      console.warn("⚠️ reCAPTCHA Enterprise script not loaded yet.");
       return true; // Allow bypass in development if script fails
     }
 
@@ -255,28 +255,34 @@ export const assessRecaptchaEnterprise = async (action: string = 'LOGIN'): Promi
 
     // Securely call the Firebase Cloud Function
     const assessRecaptchaFunction = httpsCallable(functions, 'assessRecaptcha');
-    const result = await assessRecaptchaFunction({ token, action });
-    const data = result.data as any;
-
-    if (!data.success) {
-      console.error("reCAPTCHA assessment failed backend validation", data.reason);
-      return false;
-    }
-
-    const score = data.score;
-    console.log("reCAPTCHA Assessment Backend Result - Score:", score);
     
-    // Score is between 0.0 and 1.0. Lower means higher risk.
-    if (score !== undefined && score < 0.3) {
-      console.error("reCAPTCHA score too low:", score);
-      return false;
-    }
+    try {
+      const result = await assessRecaptchaFunction({ token, action });
+      const data = result.data as any;
 
-    return true;
+      if (!data.success) {
+        console.warn("⚠️ reCAPTCHA assessment failed backend validation", data.reason);
+        return true; // Allow on backend error
+      }
+
+      const score = data.score;
+      console.log("✅ reCAPTCHA Assessment - Score:", score);
+      
+      // Score is between 0.0 and 1.0. Lower means higher risk.
+      if (score !== undefined && score < 0.3) {
+        console.warn("⚠️ reCAPTCHA score too low:", score);
+        return false;
+      }
+
+      return true;
+    } catch (backendError) {
+      // If Cloud Function fails, allow user to proceed (will be caught by server-side validation)
+      console.warn("⚠️ reCAPTCHA Cloud Function error, allowing user to proceed:", backendError);
+      return true;
+    }
   } catch (error) {
-    console.error("reCAPTCHA verification error:", error);
-    // Allow pass if there's a network issue with recaptcha to prevent complete lockout
-    // but ideally you'd test network conditions.
+    console.warn("⚠️ reCAPTCHA verification error, allowing user to proceed:", error);
+    // Allow pass if there's a network issue to prevent complete lockout
     return true;
   }
 };

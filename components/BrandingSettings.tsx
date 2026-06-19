@@ -182,41 +182,41 @@ const BrandingSettings: React.FC<BrandingSettingsProps> = ({ isOpen, onClose }) 
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col gap-3 pt-4 border-t border-gray-200">
-            <div className="flex gap-3">
-              <button
-                onClick={handleSave}
-                disabled={!hasChanges || loading}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium py-2.5 rounded-xl transition-all flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" />
-                    Save Changes
-                  </>
-                )}
-              </button>
+          <div className="flex flex-col gap-2.5 pt-4 border-t border-gray-200">
+            <button
+              onClick={handleSave}
+              disabled={!hasChanges || loading}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save Changes
+                </>
+              )}
+            </button>
+            <div className="flex gap-2.5 sm:flex-row">
               <button
                 onClick={handleReset}
                 disabled={loading}
-                className="px-4 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-300 text-gray-700 font-medium py-2.5 rounded-xl transition-all flex items-center justify-center gap-2"
+                className="flex-1 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-300 text-gray-700 font-medium py-2.5 rounded-xl transition-all flex items-center justify-center gap-2"
               >
                 <RotateCcw className="w-4 h-4" />
                 Reset
               </button>
+              <button
+                onClick={onClose}
+                disabled={loading}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-300 text-gray-700 font-medium py-2.5 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
             </div>
-            <button
-              onClick={onClose}
-              disabled={loading}
-              className="w-full bg-gray-200 hover:bg-gray-300 disabled:bg-gray-300 text-gray-700 font-medium py-2.5 rounded-xl transition-all"
-            >
-              Cancel
-            </button>
           </div>
         </div>
       </div>

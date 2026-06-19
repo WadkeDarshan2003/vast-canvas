@@ -1,10 +1,14 @@
 {
   "functions": {
     "source": "vast-canvas-backend/functions",
-    "codebase": "default"
+    "codebase": "default",
+    "runtime": "nodejs24"
   },
   "firestore": {
     "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
   },
   "hosting": {
     "public": "dist",
