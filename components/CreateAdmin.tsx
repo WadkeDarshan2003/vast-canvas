@@ -64,8 +64,7 @@ const CreateAdmin: React.FC = () => {
         avatar: photoPreview || undefined, // Use profile photo as avatar
       } as User;
 
-      // If an admin is logged in, reuse their tenantId so created admin is in same tenant
-      if (currentUser && currentUser.tenantId) userToCreate.tenantId = currentUser.tenantId;
+      userToCreate.tenantId = 'vast-canvas';
 
       console.log('👤 Admin account prepared:', {
         name,

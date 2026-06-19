@@ -82,9 +82,7 @@ const CreateAdmin_v2: React.FC = () => {
         avatar: photoPreview || undefined,
       } as User;
 
-      if (currentUser && currentUser.tenantId) {
-        userToCreate.tenantId = currentUser.tenantId;
-      }
+      userToCreate.tenantId = 'vast-canvas';
 
       console.log('👤 Admin account prepared:', {
         name,

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <rect width="1600" height="1000" fill="#0b1020"/>
+  <g stroke="#93c5fd" stroke-width="4" fill="none" opacity="0.95">
+    <rect x="390" y="170" width="820" height="620" rx="12"/>
+    <rect x="520" y="290" width="560" height="380" rx="8"/>
+    <line x1="800" y1="170" x2="800" y2="790" stroke-dasharray="14 10"/>
+    <line x1="390" y1="480" x2="1210" y2="480" stroke-dasharray="14 10"/>
+    <line x1="520" y1="290" x2="1080" y2="670"/>
+    <line x1="1080" y1="290" x2="520" y2="670"/>
+  </g>
+  <text x="390" y="120" fill="#e2e8f0" font-size="52" font-family="Consolas, monospace" font-weight="700">Packaging Dieline Preview</text>
+  <text x="390" y="860" fill="#94a3b8" font-size="28" font-family="Consolas, monospace">Demo technical gallery file (seed asset)</text>
+</svg>

@@ -1,6 +1,6 @@
 {
-  "name": "id-erp-functions",
-  "description": "Cloud Functions for ID ERP",
+  "name": "vast-canvas-functions",
+  "description": "Cloud Functions for Vast Canvas",
   "type": "module",
   "main": "lib/index.js",
   "scripts": {

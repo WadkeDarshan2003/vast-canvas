@@ -6,7 +6,8 @@ import {
   where,
   writeBatch
 } from 'firebase/firestore';
-import { db } from './firebaseConfig';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from './firebaseConfig';
 import { Role, Timeline } from '../types';
 import { createDemoUsers } from './demoUsersService';
 import { createDemoProjects } from './demoProjectService';
@@ -89,6 +90,26 @@ const createTimelineSeed = (project: any): Omit<Timeline, 'id'>[] => {
   ];
 };
 
+const seedDemoDataViaAdminFunction = async (
+  tenantId: string,
+  adminId: string,
+  options: SeedOptions = {}
+): Promise<SeedResult> => {
+  const demoUsers = createDemoUsers(tenantId);
+  const demoProjects = createDemoProjects();
+
+  const seedCallable = httpsCallable(functions, 'seedDemoDataAdmin');
+  const response = await seedCallable({
+    tenantId,
+    adminId,
+    replaceExisting: Boolean(options.replaceExisting),
+    demoUsers,
+    demoProjects,
+  });
+
+  return response.data as SeedResult;
+};
+
 /**
  * Seeds the Firebase database with demo data for testing
  * Includes: users, role collections, projects, tasks, meetings, documents, finances, timelines, activity logs
@@ -99,6 +120,20 @@ export async function seedDemoData(
   options: SeedOptions = {}
 ): Promise<SeedResult> {
   try {
+    // Preferred path: server-side seed through Admin SDK so client Firestore rules do not block demo seeding.
+    try {
+      const callableResult = await seedDemoDataViaAdminFunction(tenantId, adminId, options);
+      if (callableResult?.success) {
+        return callableResult;
+      }
+      // If callable returns a controlled non-success response, surface it directly.
+      if (typeof callableResult?.success === 'boolean') {
+        return callableResult;
+      }
+    } catch (callableError) {
+      console.warn('Admin callable demo seed unavailable, falling back to client seeding:', callableError);
+    }
+
     console.log('🌱 Starting demo data seeding for tenant:', tenantId);
     
     // Check if demo data already exists for this tenant
@@ -166,10 +201,11 @@ export async function seedDemoData(
       const demoProject = demoProjects[index];
       const demoProjectRef = doc(collection(db, 'projects'));
       const projectId = demoProjectRef.id;
-      const mappedClientId = index % 2 === 0 ? userIdMap['client-1'] : userIdMap['client-2'];
-      const mappedClientIds = index % 2 === 0
-        ? [userIdMap['client-1'], userIdMap['client-2']]
-        : [userIdMap['client-2']];
+      const mappedClientId = mapUserId(demoProject.clientId, userIdMap);
+      const mappedClientIds = ((demoProject.clientIds && demoProject.clientIds.length > 0)
+        ? demoProject.clientIds
+        : [demoProject.clientId]
+      ).map((id) => mapUserId(id, userIdMap));
 
       const mappedTasks = (demoProject.tasks || []).map((task) => ({
         ...task,

@@ -3,10 +3,11 @@ import { User } from '../types';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from '../services/firebaseConfig';
 import { getUser, createUser, claimPhoneUserProfile } from '../services/firebaseService';
-import { getTenantsByAdmin, saveSelectedTenant, getSelectedTenant, getTenantById } from '../services/tenantService';
 import { updateDeviceLastLogin } from '../utils/deviceUtils';
 import { saveSession, getSession, clearSession, extendSession as extendSessionUtil } from '../utils/sessionUtils';
 import { clearIndexedDbPersistence } from 'firebase/firestore';
+
+const SINGLE_FIRM = { id: 'vast-canvas', name: 'Vast Canvas' };
 
 interface AuthContextType {
   user: User | null;
@@ -29,8 +30,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [firebaseUser, setFirebaseUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [adminCredentials, setAdminCredentials] = useState<{ email: string; password: string } | null>(null);
-  const [currentTenant, setCurrentTenant] = useState<{ id: string; name: string } | null>(null);
-  const [availableTenants, setAvailableTenants] = useState<Array<{ id: string; name: string }>>([]);
+  const [currentTenant, setCurrentTenant] = useState<{ id: string; name: string } | null>(SINGLE_FIRM);
+  const [availableTenants, setAvailableTenants] = useState<Array<{ id: string; name: string }>>([SINGLE_FIRM]);
 
   // Listen to Firebase authentication state
   useEffect(() => {
@@ -70,12 +71,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               email: authUser.email || '',
               role: 'Admin' as any,
               phone: '',
-              tenantId: authUser.uid // Use UID as tenantId for temporary profiles
+              tenantId: SINGLE_FIRM.id
             };
           }
           
           setFirebaseUser(authUser);
           setUser(userProfile);
+          setCurrentTenant(SINGLE_FIRM);
+          setAvailableTenants([SINGLE_FIRM]);
           
           // Save session for 24-hour persistence
           saveSession(userProfile);
@@ -159,93 +162,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Load available tenants for admin and designer users
   useEffect(() => {
-    if (!user || (user.role !== 'Admin' && user.role !== 'Designer')) {
-      setAvailableTenants([]);
-      setCurrentTenant(null);
-      return;
+    if (user) {
+      setAvailableTenants([SINGLE_FIRM]);
+      setCurrentTenant(SINGLE_FIRM);
     }
-
-    const loadTenants = async () => {
-      try {
-        let tenants: Array<{ id: string; name: string }> = [];
-
-        if (user.role === 'Admin') {
-          tenants = await getTenantsByAdmin(user.id);
-        } else if (user.role === 'Designer') {
-          const tenantIds = (user as any).tenantIds || [];
-          if (tenantIds.length > 0) {
-             const results = await Promise.all(tenantIds.map((tid: string) => getTenantById(tid)));
-             tenants = results
-                .filter((t): t is any => t !== null)
-                .map(t => ({ id: t.id, name: t.name }));
-                
-             // Ensure primary tenant is in list
-             if (user.tenantId && !tenants.find(t => t.id === user.tenantId)) {
-                const primary = await getTenantById(user.tenantId);
-                if (primary) {
-                    tenants.push({ id: primary.id, name: primary.name });
-                }
-             }
-          }
-        }
-        
-        // If no tenants found, fetch tenant name from Firestore
-        if (!tenants || tenants.length === 0) {
-          if (user.tenantId) {
-            const tenantDoc = await getTenantById(user.tenantId);
-            const tenantName = tenantDoc?.name || user.tenantId;
-            const defaultTenant = { id: user.tenantId, name: tenantName };
-            setAvailableTenants([defaultTenant]);
-            setCurrentTenant(defaultTenant);
-          }
-          return;
-        }
-        
-        setAvailableTenants(tenants);
-
-        // Load last selected tenant or use first one
-        const lastSelected = getSelectedTenant(user.id);
-        const tenantToUse = tenants.find(t => t.id === lastSelected) || tenants[0] || null;
-        
-        if (tenantToUse) {
-          setCurrentTenant(tenantToUse);
-        }
-      } catch (error) {
-        console.error('Error loading tenants:', error);
-        // Fallback: fetch tenant name from Firestore
-        if (user.tenantId) {
-          try {
-            const tenantDoc = await getTenantById(user.tenantId);
-            const tenantName = tenantDoc?.name || user.tenantId;
-            const defaultTenant = { id: user.tenantId, name: tenantName };
-            setAvailableTenants([defaultTenant]);
-            setCurrentTenant(defaultTenant);
-          } catch (err) {
-            // Last resort: use tenantId as name
-            const defaultTenant = { id: user.tenantId, name: user.tenantId };
-            setAvailableTenants([defaultTenant]);
-            setCurrentTenant(defaultTenant);
-          }
-        }
-      }
-    };
-
-    loadTenants();
   }, [user]);
 
   const switchTenant = async (tenantId: string) => {
     try {
-      const tenant = availableTenants.find(t => t.id === tenantId);
-      if (!tenant) {
-        throw new Error('Tenant not found');
+      if (tenantId !== SINGLE_FIRM.id) {
+        throw new Error('Single-firm setup does not support tenant switching');
       }
       
-      setCurrentTenant(tenant);
-      if (user) {
-        saveSelectedTenant(user.id, tenantId);
-      }
+      setCurrentTenant(SINGLE_FIRM);
     } catch (error) {
       console.error('Error switching tenant:', error);
       throw error;

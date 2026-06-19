@@ -1,102 +1,69 @@
-rules_version = '3';
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions
-    function isAuth() { return request.auth != null; }
-    
-    // Get current user document
-    function getCurrentUser() {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function currentUser() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-    
-    // Check if user has access to a specific tenant
-    // Supports both single tenantId and multiple tenantIds array
-    function hasAccessToTenant(tenantId) {
-      let userDoc = getCurrentUser();
-      return (
-        userDoc.tenantId == tenantId ||
-        (userDoc.tenantIds != null && tenantId in userDoc.tenantIds)
-      );
+
+    function isAdmin() {
+      return isSignedIn() && currentUser().role == 'Admin';
     }
-    
-    // -------- Users Collection --------
-    // Allow authenticated users to read all users
-    // Allow users to write their own document
+
+    match /appConfig/{configId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     match /users/{userId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
-      allow update, delete: if isAuth() && (
-        request.auth.uid == userId || 
-        request.auth.uid == resource.data.createdBy ||
-        resource.data.tenantId == null ||
-        hasAccessToTenant(resource.data.tenantId)
-      );
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
-    
-    // -------- Tenants Collection --------
+
     match /tenants/{tenantId} {
-      allow create: if isAuth();
-      allow read: if isAuth();
-      allow update, delete: if isAuth();
+      allow read: if isSignedIn();
+      allow create, update, delete: if false;
     }
-    
-    // -------- Tenant Subcollections --------
-    match /tenants/{tenantId}/{doc=**} {
-      allow read, write: if isAuth();
-    }
-    
-    // -------- Projects Collection --------
-    // Multi-tenant support: User can read/write projects from their tenants
+
     match /projects/{projectId} {
-      allow read, write: if isAuth() && (
-        resource.data.tenantId == null ||
-        hasAccessToTenant(resource.data.tenantId)
-      );
-      // Allow write for creation (no resource check yet)
-      allow create: if isAuth();
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn();
+
+      match /{document=**} {
+        allow read, write: if isSignedIn();
+      }
     }
-    match /projects/{projectId}/{sub=**} {
-      allow read, write: if isAuth() && (
-        get(/databases/$(database)/documents/projects/$(projectId)).data.tenantId == null ||
-        hasAccessToTenant(get(/databases/$(database)/documents/projects/$(projectId)).data.tenantId)
-      );
+
+    match /financialRecords/{recordId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn();
     }
-    
-    // -------- Role Collections --------
-    // Vendors with multi-tenant support (tenantIds array)
+
     match /vendors/{docId} {
-      allow read, write: if isAuth() && (
-        request.auth.uid == docId ||
-        request.auth.token.role == 'admin' ||
-        hasAccessToTenant(resource.data.tenantId) ||
-        (resource.data.tenantIds != null && 
-         hasAccessToTenant(resource.data.tenantIds[0]))
-      );
+      allow read, write: if isSignedIn() && (request.auth.uid == docId || isAdmin());
     }
-    
-    // Designers with multi-tenant support (tenantIds array)
+
     match /designers/{docId} {
-      allow read, write: if isAuth() && (
-        request.auth.uid == docId ||
-        request.auth.token.role == 'admin' ||
-        hasAccessToTenant(resource.data.tenantId) ||
-        (resource.data.tenantIds != null && 
-         hasAccessToTenant(resource.data.tenantIds[0]))
-      );
+      allow read, write: if isSignedIn() && (request.auth.uid == docId || isAdmin());
     }
-    
+
     match /clients/{docId} {
-      allow read, write: if isAuth() && (
-        request.auth.uid == docId ||
-        hasAccessToTenant(resource.data.tenantId)
-      );
+      allow read, write: if isSignedIn() && (request.auth.uid == docId || isAdmin());
     }
-    
+
     match /admins/{docId} {
-      allow read, write: if isAuth() && (
-        request.auth.uid == docId ||
-        hasAccessToTenant(resource.data.tenantId)
-      );
+      allow read, write: if isSignedIn() && (request.auth.uid == docId || isAdmin());
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (resource.data.recipientId == request.auth.uid || isAdmin());
+      allow create, update, delete: if isSignedIn();
     }
   }
 }
