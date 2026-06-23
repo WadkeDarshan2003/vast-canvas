@@ -85,14 +85,16 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             >
               Cancel
             </button>
-            <button
-              onClick={() => {
-                if (onDiscard) onDiscard();
-              }}
-              className="flex-1 px-4 py-2.5 bg-red-50 text-red-600 border border-red-300 rounded-lg hover:bg-red-100 transition-colors font-medium"
-            >
-              {cancelText}
-            </button>
+            {onDiscard && (
+              <button
+                onClick={() => {
+                  onDiscard();
+                }}
+                className="flex-1 px-4 py-2.5 bg-red-50 text-red-600 border border-red-300 rounded-lg hover:bg-red-100 transition-colors font-medium"
+              >
+                {cancelText}
+              </button>
+            )}
             <button
               onClick={() => {
                 onConfirm();

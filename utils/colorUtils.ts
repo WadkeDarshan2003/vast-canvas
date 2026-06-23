@@ -129,6 +129,7 @@ export function getPackageColor(packageType?: string) {
     case 'GROWTH':
       return PACKAGE_COLORS.GROWTH;
     case 'PACKAGE_200':
+    case 'PACKAGE_100':
     case 'BUSINESS':
       return PACKAGE_COLORS.BUSINESS;
     case 'CUSTOM':

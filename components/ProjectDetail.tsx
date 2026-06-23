@@ -1,11 +1,35 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Project, User, Task, TaskStatus, Role, Meeting, SubTask, Comment, ApprovalStatus, ActivityLog, ProjectDocument, FinancialRecord, ProjectStatus, Timeline } from '../types';
+import { Project, User, Task, TaskStatus, Role, Meeting, SubTask, Comment, ApprovalStatus, ActivityLog, ProjectDocument, FinancialRecord, ProjectStatus, Timeline, CreativeCard } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { CATEGORY_ORDER } from '../constants';
 import { useProjectCrud, useFinancialCrud } from '../hooks/useCrud';
-import { createMeeting, updateMeeting, deleteMeeting, createDocument, addCommentToDocument, deleteDocument, updateDocument, createTask, updateTask, deleteTask, subscribeToProjectMeetings, subscribeToProjectDocuments, subscribeToTimelines, subscribeToProjectTasks, logTimelineEvent, addTeamMember, addCommentToMeeting, deleteCommentFromMeeting, subscribeToMeetingComments } from '../services/projectDetailsService';
-import { subscribeToProjectFinancialRecords, updateProjectFinancialRecord, createProjectFinancialRecord } from '../services/financialService';
+import { 
+  createMeeting as createMeetingOrig, 
+  updateMeeting as updateMeetingOrig, 
+  deleteMeeting as deleteMeetingOrig, 
+  createDocument as createDocumentOrig, 
+  addCommentToDocument as addCommentToDocumentOrig, 
+  deleteDocument as deleteDocumentOrig, 
+  updateDocument as updateDocumentOrig, 
+  createTask as createTaskOrig, 
+  updateTask as updateTaskOrig, 
+  deleteTask as deleteTaskOrig, 
+  subscribeToProjectMeetings, 
+  subscribeToProjectDocuments, 
+  subscribeToTimelines, 
+  subscribeToProjectTasks, 
+  logTimelineEvent as logTimelineEventOrig, 
+  addTeamMember, 
+  addCommentToMeeting as addCommentToMeetingOrig, 
+  deleteCommentFromMeeting as deleteCommentFromMeetingOrig, 
+  subscribeToMeetingComments 
+} from '../services/projectDetailsService';
+import { 
+  subscribeToProjectFinancialRecords, 
+  updateProjectFinancialRecord as updateProjectFinancialRecordOrig, 
+  createProjectFinancialRecord as createProjectFinancialRecordOrig 
+} from '../services/financialService';
 
 import { sendProjectWelcomeEmail, sendDocumentApprovalEmail, sendTaskApprovalEmail, sendMeetingNotificationEmail, sendTaskAssignmentNotificationEmail, sendTaskStartApprovalNotificationEmail, sendTaskCompletionApprovalNotificationEmail, sendTaskCommentNotificationEmail, sendDocumentCommentNotificationEmail, sendDocumentAdminApprovalNotificationEmail, sendDocumentClientApprovalNotificationEmail, sendFinancialApprovalNotificationEmail, sendMeetingCommentNotificationEmail, sendDocumentUploadNotificationEmail } from '../services/emailTriggerService';
 import { sendTaskReminder } from '../services/emailService';
@@ -43,11 +67,55 @@ interface ProjectDetailProps {
 const ROW_HEIGHT = 48; // Fixed height for Gantt rows
 const DEFAULT_AVATAR = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"%3E%3Ccircle cx="12" cy="12" r="12" fill="%23e5e7eb"/%3E%3C/svg%3E';
 
-const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], users, onUpdateProject, onDeleteProject, onBack, initialTab, initialTask, onCloseTask }) => {
+const ProjectDetail: React.FC<ProjectDetailProps> = ({ project: rawProject, projects = [], users, onUpdateProject, onDeleteProject, onBack, initialTab, initialTask, onCloseTask }) => {
+  const project = useMemo(() => ({
+    ...rawProject,
+    tasks: rawProject.tasks || [],
+    financials: rawProject.financials || []
+  }), [rawProject]);
+
+  const parentCollection = project.packageType ? 'plans' : 'projects';
+
+  // Local wrapper overrides to automatically inject the dynamic parentCollection ('projects' | 'plans')
+  const createTask = useCallback((projectId: string, task: any) => 
+    createTaskOrig(projectId, task, parentCollection), [parentCollection]);
+  const updateTask = useCallback((projectId: string, taskId: string, updates: any) => 
+    updateTaskOrig(projectId, taskId, updates, parentCollection), [parentCollection]);
+  const deleteTask = useCallback((projectId: string, taskId: string) => 
+    deleteTaskOrig(projectId, taskId, parentCollection), [parentCollection]);
+  
+  const createMeeting = useCallback((projectId: string, meeting: any) => 
+    createMeetingOrig(projectId, meeting, parentCollection), [parentCollection]);
+  const updateMeeting = useCallback((projectId: string, meetingId: string, updates: any) => 
+    updateMeetingOrig(projectId, meetingId, updates, parentCollection), [parentCollection]);
+  const deleteMeeting = useCallback((projectId: string, meetingId: string) => 
+    deleteMeetingOrig(projectId, meetingId, parentCollection), [parentCollection]);
+  const addCommentToMeeting = useCallback((projectId: string, meetingId: string, comment: any) => 
+    addCommentToMeetingOrig(projectId, meetingId, comment, parentCollection), [parentCollection]);
+  const deleteCommentFromMeeting = useCallback((projectId: string, meetingId: string, commentId: string) => 
+    deleteCommentFromMeetingOrig(projectId, meetingId, commentId, parentCollection), [parentCollection]);
+
+  const createDocument = useCallback((projectId: string, doc: any) => 
+    createDocumentOrig(projectId, doc, parentCollection), [parentCollection]);
+  const updateDocument = useCallback((projectId: string, documentId: string, updates: any) => 
+    updateDocumentOrig(projectId, documentId, updates, parentCollection), [parentCollection]);
+  const deleteDocument = useCallback((projectId: string, documentId: string) => 
+    deleteDocumentOrig(projectId, documentId, parentCollection), [parentCollection]);
+  const addCommentToDocument = useCallback((projectId: string, documentId: string, comment: any) => 
+    addCommentToDocumentOrig(projectId, documentId, comment, parentCollection), [parentCollection]);
+
+  const logTimelineEvent = useCallback((projectId: string, title: string, description: string, status?: any, startDate?: string, endDate?: string) => 
+    logTimelineEventOrig(projectId, title, description, status, startDate, endDate, parentCollection), [parentCollection]);
+
+  const createProjectFinancialRecord = useCallback((projectId: string, record: any) => 
+    createProjectFinancialRecordOrig(projectId, record, parentCollection), [parentCollection]);
+  const updateProjectFinancialRecord = useCallback((projectId: string, recordId: string, updates: any) => 
+    updateProjectFinancialRecordOrig(projectId, recordId, updates, parentCollection), [parentCollection]);
+
   const { user } = useAuth();
   const { addNotification } = useNotifications();
   const { updateExistingProject, deleteExistingProject, loading: projectLoading } = useProjectCrud();
-  const { createNewRecord: createFinancialRecord, updateExistingRecord: updateFinancialRecord, deleteExistingRecord: deleteFinancialRecord, loading: financialLoading } = useFinancialCrud(project.id);
+  const { createNewRecord: createFinancialRecord, updateExistingRecord: updateFinancialRecord, deleteExistingRecord: deleteFinancialRecord, loading: financialLoading } = useFinancialCrud(project.id, parentCollection);
   const { showLoading, hideLoading } = useLoading();
 
   // Helper to recalculate and update project budget in Firestore
@@ -100,7 +168,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
     }
   };
   
-  const [activeTab, setActiveTab] = useState<'discovery' | 'plan' | 'financials' | 'team' | 'timeline' | 'documents' | 'meetings'>(() => {
+  const [activeTab, setActiveTab] = useState<'discovery' | 'plan' | 'work' | 'financials' | 'team' | 'timeline' | 'documents' | 'meetings'>(() => {
     if (initialTab) return initialTab;
     const saved = localStorage.getItem('last_project_tab');
     if (saved && ['discovery', 'plan', 'financials', 'team', 'timeline', 'documents', 'meetings'].includes(saved)) {
@@ -287,6 +355,14 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
   const [realTimeTimelines, setRealTimeTimelines] = useState<Timeline[]>([]);
   const [realTimeTasks, setRealTimeTasks] = useState<Task[]>([]);
   const [realTimeFinancials, setRealTimeFinancials] = useState<FinancialRecord[]>([]);
+  const [newCreativeTitle, setNewCreativeTitle] = useState('');
+  const [newCreativeDesc, setNewCreativeDesc] = useState('');
+  const [newCreativeAssignee, setNewCreativeAssignee] = useState('');
+
+  // Work Cards state
+  const [newWorkTitle, setNewWorkTitle] = useState('');
+  const [newWorkDesc, setNewWorkDesc] = useState('');
+  const [newWorkAssignee, setNewWorkAssignee] = useState('');
 
   // Use only real-time financials
   const currentFinancials = realTimeFinancials;
@@ -413,10 +489,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
 
     const packageKey: 'starter' | 'growth' | 'business' | 'impact' | 'custom' | null = (() => {
       if (normalizedPackageType.includes('custom')) return 'custom';
-      if (normalizedPackageType.includes('starter') || normalizedPackageType.includes('package 1') || normalizedPackageType.includes('50')) return 'starter';
-      if (normalizedPackageType.includes('growth') || normalizedPackageType.includes('package 2') || normalizedPackageType.includes('100')) return 'growth';
-      if (normalizedPackageType.includes('business') || normalizedPackageType.includes('package 3') || normalizedPackageType.includes('200')) return 'business';
-      if (normalizedPackageType.includes('impact') || normalizedPackageType.includes('package 4')) return 'impact';
+      if (normalizedPackageType.includes('starter') || normalizedPackageType.includes('package 1') || normalizedPackageType.includes('20')) return 'starter';
+      if (normalizedPackageType.includes('growth') || normalizedPackageType.includes('package 2') || normalizedPackageType.includes('50')) return 'growth';
+      if (normalizedPackageType.includes('business') || normalizedPackageType.includes('package 3') || normalizedPackageType.includes('100')) return 'business';
+      if (normalizedPackageType.includes('impact') || normalizedPackageType.includes('package 4') || normalizedPackageType.includes('200')) return 'impact';
       return null; // No plan selected
     })();
 
@@ -427,20 +503,18 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
 
     const config = packageConfigs[packageKey];
 
-    const deliveredCount = displayTasks.filter(
-      (task) => task.status === TaskStatus.DONE || task.status === 'Done'
+    const creativesList = project.creatives || [];
+
+    const deliveredCount = creativesList.filter(
+      (c) => c.status === 'delivered'
     ).length;
 
-    const inProcessCount = displayTasks.filter(
-      (task) =>
-        task.status === TaskStatus.IN_PROGRESS ||
-        task.status === 'In Progress' ||
-        task.status === TaskStatus.REVIEW ||
-        task.status === 'Review'
+    const inProcessCount = creativesList.filter(
+      (c) => c.status === 'in-process'
     ).length;
 
-    const totalDesignQuota = config.designsPerYear > 0 ? config.designsPerYear : displayTasks.length;
-    const usedCount = Math.min(totalDesignQuota, displayTasks.length);
+    const totalDesignQuota = config.designsPerYear > 0 ? config.designsPerYear : creativesList.length;
+    const usedCount = Math.min(totalDesignQuota, creativesList.length);
     const remainingCount = Math.max(0, totalDesignQuota - usedCount);
     const deliveredPercent = totalDesignQuota > 0 ? Math.round((deliveredCount / totalDesignQuota) * 100) : 0;
     const inProcessPercent = totalDesignQuota > 0 ? Math.round((inProcessCount / totalDesignQuota) * 100) : 0;
@@ -557,27 +631,27 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
             ...prev,
             [meeting.id]: comments
           }));
-        });
+        }, parentCollection);
       });
-    });
+    }, parentCollection);
     return () => unsubscribe();
-  }, [project.id]);
+  }, [project.id, parentCollection]);
 
   // Subscribe to real-time documents from Firestore
   useEffect(() => {
     const unsubscribe = subscribeToProjectDocuments(project.id, (documents) => {
       setRealTimeDocuments(documents);
-    });
+    }, parentCollection);
     return () => unsubscribe();
-  }, [project.id]);
+  }, [project.id, parentCollection]);
 
   // Subscribe to real-time timelines from Firestore
   useEffect(() => {
     const unsubscribe = subscribeToTimelines(project.id, (timelines) => {
       setRealTimeTimelines(timelines);
-    });
+    }, parentCollection);
     return () => unsubscribe();
-  }, [project.id]);
+  }, [project.id, parentCollection]);
 
   // Keep selected document in sync with real-time updates (for comments, approvals, etc.)
   useEffect(() => {
@@ -593,9 +667,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
   useEffect(() => {
     const unsubscribe = subscribeToProjectTasks(project.id, (tasks) => {
       setRealTimeTasks(tasks);
-    });
+    }, parentCollection);
     return () => unsubscribe();
-  }, [project.id]);
+  }, [project.id, parentCollection]);
 
   // Keep editing task in sync with real-time updates (for approvals, status, etc.)
   useEffect(() => {
@@ -611,9 +685,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
   useEffect(() => {
     const unsubscribe = subscribeToProjectFinancialRecords(project.id, (records) => {
       setRealTimeFinancials(records);
-    });
+    }, parentCollection);
     return () => unsubscribe();
-  }, [project.id]);
+  }, [project.id, parentCollection]);
 
   // Sync total allocated budget (initial + additional) to project budget field
   useEffect(() => {
@@ -664,9 +738,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
     }
   }, [user?.role, activeTab]);
 
-  // If Client, only allow access to discovery, documents, timeline, and financials tabs
+  // If Client, restrict access to specific internal tabs
   useEffect(() => {
-    if (user?.role === Role.CLIENT && (activeTab === 'plan' || activeTab === 'team')) {
+    if (user?.role === Role.CLIENT && (activeTab === 'team')) {
         setActiveTab('discovery');
     }
   }, [user?.role, activeTab]);
@@ -684,6 +758,15 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
   const canUploadDocs = true; 
   const canViewFinancials = !isVendor; 
   const canUseAI = canEditProject;
+
+  // Reset active tab if it becomes inaccessible based on current project/role
+  useEffect(() => {
+    if (activeTab === 'plan' && (!project.packageType)) setActiveTab('discovery');
+    else if (activeTab === 'work' && (!!project.packageType)) setActiveTab('discovery');
+    else if (activeTab === 'financials' && !canViewFinancials) setActiveTab('discovery');
+    else if (activeTab === 'team' && isClient) setActiveTab('discovery');
+    else if (activeTab === 'timeline' && isVendor) setActiveTab('discovery');
+  }, [activeTab, project.packageType, isClient, isVendor, canViewFinancials]);
 
   // Swipe Logic
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -708,7 +791,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
     if (isLeftSwipe || isRightSwipe) {
       const tabs = [
         { id: 'discovery', hidden: isVendor || isClient ? false : false },
-        { id: 'plan', hidden: isClient },
+        { id: 'work', hidden: !!project.packageType },
+        { id: 'plan', hidden: !project.packageType },
         { id: 'documents', hidden: false },
         { id: 'financials', hidden: !canViewFinancials },
         { id: 'timeline', hidden: isVendor },
@@ -1171,6 +1255,66 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, projects = [], u
     setIsLeadDesignerRemovalConfirmOpen(false);
     onUpdateProject({ ...project, leadDesignerId: '' });
     addNotification('Success', 'Lead Designer removed', 'success');
+  };
+
+  const handleAddCreative = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCreativeDesc.trim() || !user) return;
+    
+    const newCreative: CreativeCard = {
+      id: Date.now().toString() + Math.random().toString(36).substring(7),
+      title: newCreativeTitle.trim() || 'Untitled Creative',
+      description: newCreativeDesc.trim(),
+      status: 'in-process',
+      assigneeId: newCreativeAssignee || undefined,
+      createdBy: user.id,
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedCreatives = [...(project.creatives || []), newCreative];
+    onUpdateProject({ ...project, creatives: updatedCreatives });
+    setNewCreativeTitle('');
+    setNewCreativeDesc('');
+    setNewCreativeAssignee('');
+    addNotification('Success', 'Creative card added successfully', 'success');
+  };
+
+  const handleMarkCreativeDelivered = (creativeId: string) => {
+    const updatedCreatives = (project.creatives || []).map(c => 
+      c.id === creativeId ? { ...c, status: 'delivered' as const, deliveredAt: new Date().toISOString() } : c
+    );
+    onUpdateProject({ ...project, creatives: updatedCreatives });
+    addNotification('Success', 'Creative marked as delivered', 'success');
+  };
+
+  const handleAddWorkCard = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWorkDesc.trim() || !user) return;
+    
+    const newWork: CreativeCard = {
+      id: Date.now().toString() + Math.random().toString(36).substring(7),
+      title: newWorkTitle.trim() || 'Untitled Work',
+      description: newWorkDesc.trim(),
+      status: 'in-process',
+      assigneeId: newWorkAssignee || undefined,
+      createdBy: user.id,
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedWorks = [...(project.workCards || []), newWork];
+    onUpdateProject({ ...project, workCards: updatedWorks });
+    setNewWorkTitle('');
+    setNewWorkDesc('');
+    setNewWorkAssignee('');
+    addNotification('Success', 'Work card added successfully', 'success');
+  };
+
+  const handleMarkWorkCardDelivered = (workId: string) => {
+    const updatedWorks = (project.workCards || []).map(w => 
+      w.id === workId ? { ...w, status: 'delivered' as const, deliveredAt: new Date().toISOString() } : w
+    );
+    onUpdateProject({ ...project, workCards: updatedWorks });
+    addNotification('Success', 'Work card marked as delivered', 'success');
   };
 
   // --- Helper: Notifications ---
@@ -3680,37 +3824,37 @@ addNotification('Error', 'Failed to complete task', 'error');
   return (
     <div className="h-full flex flex-col animate-fade-in relative">
       {/* Project Details Header - Mobile Optimized */}
-      <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-2 flex flex-col md:flex-row items-start md:items-center justify-between sticky top-0 z-10 shadow-sm gap-3 md:gap-0">
+      <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-2 flex flex-col md:flex-row items-start md:items-center justify-between sticky top-0 z-10 shadow-sm gap-2 md:gap-0">
         {!isProjectHeaderLoaded && (
-          <div className="w-full space-y-3">
-            <div className="h-6 bg-gray-200 rounded w-1/3 animate-pulse"></div>
-            <div className="h-4 bg-gray-100 rounded w-1/2 animate-pulse"></div>
+          <div className="w-full space-y-2">
+            <div className="h-5 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+            <div className="h-3 bg-gray-100 rounded w-1/2 animate-pulse"></div>
           </div>
         )}
         {isProjectHeaderLoaded && (
           <>
-            <div className="flex items-start gap-3 md:gap-4 w-full md:w-auto flex-1">
+            <div className="flex items-start gap-2 md:gap-3 w-full md:w-auto flex-1">
               <button onClick={onBack} className="text-gray-500 hover:text-gray-800 transition-colors flex-shrink-0 mt-1" title="Go back to project list">
-                <ChevronRight className="w-5 h-5 rotate-180" />
+                <ChevronRight className="w-4 h-4 md:w-5 md:h-5 rotate-180" />
               </button>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
-                  <h1 className="text-xl md:text-2xl font-bold text-gray-900 truncate">{project.name}</h1>
+                  <h1 className="text-lg md:text-xl font-bold text-gray-900 truncate">{project.name}</h1>
                   {isAdmin && (
                     <button 
                       onClick={openDeleteProjectConfirm}
-                      className="md:hidden flex items-center gap-2 px-2 py-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-xs font-medium whitespace-nowrap flex-shrink-0"
+                      className="md:hidden flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors text-xs font-medium whitespace-nowrap flex-shrink-0"
                       title="Delete Project"
                     >
-                      <Trash2 className="w-5 h-5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-3 md:gap-4 text-sm md:text-xs text-gray-500 mt-4 md:mt-3">
+                <div className="flex flex-wrap items-center gap-2 md:gap-3 text-sm md:text-xs text-gray-500 mt-1">
                   {isAdmin && (
                     <button
                       onClick={handleToggleHold}
-                      className={`text-sm md:text-xs font-bold flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors whitespace-nowrap ${
+                      className={`text-xs font-bold flex items-center gap-1 px-2 py-0.5 rounded border transition-colors whitespace-nowrap ${
                         project.status === ProjectStatus.ON_HOLD 
                           ? 'text-green-600 bg-green-50 border-green-100 hover:bg-green-100' 
                           : 'text-orange-600 bg-orange-50 border-orange-100 hover:bg-orange-100'
@@ -3722,10 +3866,10 @@ addNotification('Error', 'Failed to complete task', 'error');
                     </button>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-3 md:gap-4 text-base md:text-sm text-gray-600 mt-3 md:mt-3">
-                  <span className="flex items-center gap-1 whitespace-nowrap"><Clock className="w-4 h-4 flex-shrink-0" /> Due: {formatDateToIndian(project.deadline)}</span>
+                <div className="flex flex-wrap items-center gap-3 md:gap-4 text-xs md:text-xs text-gray-600 mt-1.5 md:mt-1">
+                  <span className="flex items-center gap-1 whitespace-nowrap"><Clock className="w-3 h-3 flex-shrink-0" /> Due: {formatDateToIndian(project.deadline)}</span>
                   {!isVendor && (
-                    <span className="flex items-center gap-1 whitespace-nowrap"><Wallet className="w-4 h-4 flex-shrink-0" /> Budget: ₹{project.budget.toLocaleString()}</span>
+                    <span className="flex items-center gap-1 whitespace-nowrap"><Wallet className="w-3 h-3 flex-shrink-0" /> Budget: ₹{project.budget.toLocaleString()}</span>
                   )}
                 </div>
               </div>
@@ -3741,39 +3885,26 @@ addNotification('Error', 'Failed to complete task', 'error');
                   <span className="hidden md:inline">Delete</span>
                 </button>
               )}
-              {canEditProject && activeTab !== 'timeline' && (
+              {canEditProject && activeTab !== 'timeline' && activeTab !== 'plan' && activeTab !== 'documents' && activeTab !== 'team' && (
                 <>
                   {/* Desktop Button */}
                   <button 
                     onClick={() => {
-                      if(activeTab === 'documents') { setIsDocModalOpen(true); setSelectedFiles([]); }
                       if(activeTab === 'financials') { openTransactionModal(); }
-                      if(activeTab === 'team') { setIsMemberModalOpen(true); setSelectedMemberId(''); }
                       if(activeTab === 'discovery') { setIsMeetingModalOpen(true); }
                     }}
                     className="hidden md:flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm md:text-xs font-medium whitespace-nowrap flex-1 md:flex-none justify-center md:justify-start"
                   >
                     <Plus className="w-4 h-4 flex-shrink-0" />
                     <span>
-                      {activeTab === 'documents' ? 'Add Document' : 
-                       activeTab === 'financials' ? 'Add Transaction' :
-                       activeTab === 'team' ? 'Add Member' :
+                      {activeTab === 'financials' ? 'Add Transaction' :
                        activeTab === 'discovery' ? 'New Chat' : 'Add Item'}
                     </span>
                   </button>
 
                 </>
               )}
-              {/* Allow non-admins to upload docs too if active tab is docs */}
-              {!canEditProject && activeTab === 'documents' && canUploadDocs && (
-                 <button 
-                  onClick={() => { setIsDocModalOpen(true); setSelectedFiles([]); }}
-                  className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm md:text-xs font-medium whitespace-nowrap flex-1 md:flex-none justify-center md:justify-start"
-                >
-                  <Upload className="w-4 h-4 flex-shrink-0" /> 
-                  <span className="hidden md:inline">Upload</span>
-                </button>
-              )}
+
             </div>
           </>
         )}
@@ -3784,7 +3915,8 @@ addNotification('Error', 'Failed to complete task', 'error');
         <div className="flex gap-1 md:gap-6 px-4 md:px-6 min-w-max md:min-w-0 md:w-full md:justify-center">
           {[
             { id: 'discovery', label: 'Chat', icon: FileText, hidden: isVendor || isClient ? false : false },
-            { id: 'plan', label: 'Plan', icon: Layout, hidden: isClient },
+            { id: 'work', label: 'Work Cards', icon: Layout, hidden: !!project.packageType },
+            { id: 'plan', label: 'Plan', icon: Layout, hidden: !project.packageType },
             { id: 'documents', label: 'Gallery', icon: FileIcon, hidden: false },
             { id: 'financials', label: 'Financials', icon: IndianRupee, hidden: !canViewFinancials },
             { id: 'timeline', label: 'Timeline', icon: History, hidden: isVendor },
@@ -3812,18 +3944,18 @@ addNotification('Error', 'Failed to complete task', 'error');
 
       {/* Content Area */}
       <div 
-        className="flex-1 overflow-y-auto bg-gray-50 border-t border-gray-200"
+        className={`flex-1 bg-gray-50 border-t border-gray-200 ${activeTab === 'discovery' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}
       >
         
         {/* PHASE 1: CHAT - WhatsApp-like mobile flow */}
         {activeTab === 'discovery' && !isVendor && (
-          <div className="max-w-6xl mx-auto">
+          <div className="max-w-6xl mx-auto h-full flex flex-col w-full">
             {/* Mobile: Show Chat List or Detail (full screen) */}
-            <div className="block lg:hidden">
+            <div className="block lg:hidden h-full flex flex-col min-h-0">
               {!selectedChatId ? (
                 // Chat List on Mobile
-                <div className="p-4 space-y-4">
-                  <div className="flex items-center justify-between mb-4">
+                <div className="p-4 flex flex-col h-full min-h-0">
+                  <div className="flex items-center justify-between mb-4 flex-shrink-0">
                     <h3 className="text-lg font-bold text-gray-900">Chats</h3>
                     <span className="text-xs font-semibold text-gray-500">{chatThreads.length} threads</span>
                   </div>
@@ -3850,7 +3982,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                     </div>
                   )}
 
-                  <div className="space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto">
+                  <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pb-4">
                     {chatThreads.length === 0 ? (
                       <div className="text-center py-8 border border-dashed border-gray-200 rounded-lg">
                         <p className="text-sm text-gray-400">No chats yet. Start a new conversation.</p>
@@ -3987,8 +4119,8 @@ addNotification('Error', 'Failed to complete task', 'error');
             </div>
 
             {/* Desktop: Show Chat List and Detail Side-by-Side */}
-            <div className="hidden lg:grid grid-cols-12 gap-4 md:gap-6 p-4 md:p-6">
-              <aside className="col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm p-4 md:p-5 space-y-4 h-[600px] flex flex-col">
+            <div className="hidden lg:grid grid-cols-12 gap-4 md:gap-6 p-4 md:p-6 h-full min-h-0">
+              <aside className="col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm p-4 md:p-5 space-y-4 h-full min-h-0 flex flex-col">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg md:text-base font-bold text-gray-900">Chats</h3>
                   <span className="text-xs font-semibold text-gray-500">{chatThreads.length} threads</span>
@@ -4045,7 +4177,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                 </div>
               </aside>
 
-              <section className="col-span-8 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col min-h-[560px]">
+              <section className="col-span-8 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col h-full min-h-0">
                 {selectedChat ? (
                   <>
                     <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
@@ -4181,92 +4313,358 @@ addNotification('Error', 'Failed to complete task', 'error');
                       </span>
                       <h2 className="text-3xl md:text-4xl font-bold">{creativePlanSummary.title}</h2>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                      <div>
-                        <p className="text-white/90 text-sm mb-1">Investment:</p>
-                        <p className="text-2xl font-bold">{creativePlanSummary.packageKey === 'custom' ? `${creativePlanSummary.budgetLabel} /Year` : creativePlanSummary.investmentLabel}</p>
-                        <p className="text-white/80 text-xs mt-1">{creativePlanSummary.perDesignLabel}</p>
+                    <div className="flex flex-wrap items-center gap-x-8 gap-y-3 mt-4 bg-gray-900/50 p-4 rounded-xl border border-gray-700/50">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/70 text-sm font-medium">Investment:</span>
+                        <span className="text-white font-bold text-sm">{creativePlanSummary.packageKey === 'custom' ? `${creativePlanSummary.budgetLabel} /Year` : creativePlanSummary.investmentLabel} <span className="text-white/60 text-xs font-normal">({creativePlanSummary.perDesignLabel})</span></span>
                       </div>
-                      <div>
-                        <p className="text-white/90 text-sm mb-1">Creatives:</p>
-                        <p className="text-2xl font-bold">{creativePlanSummary.totalDesignQuota} Creatives /Year</p>
+                      <div className="w-px h-5 bg-gray-700/50 hidden md:block"></div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/70 text-sm font-medium">Creatives:</span>
+                        <span className="text-white font-bold text-sm">{creativePlanSummary.totalDesignQuota} /Year</span>
                       </div>
-                      <div>
-                        <p className="text-white/90 text-sm mb-1">Project Status:</p>
-                        <p className="text-lg font-bold">{project.status}</p>
+                      <div className="w-px h-5 bg-gray-700/50 hidden md:block"></div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/70 text-sm font-medium">Project Status:</span>
+                        <span className="text-white font-bold text-sm capitalize">{project.status}</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Benefits */}
-                  <div className="p-6 md:p-8">
-                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: creativePlanSummary.color }}></span>
-                      Package Benefits
-                    </h3>
-                    <ul className="space-y-2">
-                      {creativePlanSummary.benefits.map((benefit, idx) => (
-                        <li key={idx} className={`flex gap-3 ${benefit.includes('Includes') || benefit.includes('plus:') ? 'font-semibold text-gray-700' : 'text-gray-600'}`}>
-                          <span className="flex-shrink-0 mt-1" style={{ color: creativePlanSummary.color }}>✓</span>
-                          <span>{benefit}</span>
-                        </li>
-                      ))}
-                    </ul>
+                </div>
+
+                {/* Plan Details Section (3 Columns: Plan Details, Budget & Progress, Package Benefits) */}
+                <div className="rounded-xl shadow-sm p-6" style={{ backgroundColor: creativePlanSummary.bgColor }}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {/* Plan Details */}
+                    <div className="flex flex-col">
+                      <h3 className="font-bold text-base mb-4 text-gray-900 border-b border-gray-900/10 pb-2">Plan Details</h3>
+                      <div className="space-y-3 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Plan Name:</span>
+                          <span className="text-sm font-bold text-gray-900">{project.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Client:</span>
+                          <span className="text-sm font-bold text-gray-900">{users.find(u => u.id === project.clientId)?.name || 'N/A'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Timeline:</span>
+                          <span className="text-sm font-bold text-gray-900">{formatDateToIndian(project.startDate)} - {formatDateToIndian(project.deadline)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Budget & Progress */}
+                    <div className="flex flex-col">
+                      <h3 className="font-bold text-base mb-4 text-gray-900 border-b border-gray-900/10 pb-2">Budget & Progress</h3>
+                      <div className="space-y-3 flex-1 flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Budget:</span>
+                          <span className="text-sm font-bold text-gray-900">{creativePlanSummary.budgetLabel}</span>
+                        </div>
+                        <div className="mt-auto">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Creative Delivery</span>
+                            <span className="text-[10px] text-gray-600 font-bold">{creativePlanSummary.deliveredPercent}% Done</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <div className="flex-1 bg-white/60 rounded p-1.5 text-center shadow-sm">
+                              <p className="text-[10px] text-gray-600 mb-0.5 font-semibold">Delivered</p>
+                              <p className="text-base font-bold text-green-600 leading-none">{creativePlanSummary.deliveredCount}</p>
+                            </div>
+                            <div className="flex-1 bg-white/60 rounded p-1.5 text-center shadow-sm">
+                              <p className="text-[10px] text-gray-600 mb-0.5 font-semibold">Process</p>
+                              <p className="text-base font-bold text-blue-600 leading-none">{creativePlanSummary.inProcessCount}</p>
+                            </div>
+                            <div className="flex-1 bg-white/60 rounded p-1.5 text-center shadow-sm">
+                              <p className="text-[10px] text-gray-600 mb-0.5 font-semibold">Remain</p>
+                              <p className="text-base font-bold text-yellow-600 leading-none">{creativePlanSummary.remainingCount}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Benefits */}
+                    <div className="flex flex-col">
+                      <h3 className="font-bold text-base mb-4 flex items-center gap-2 text-gray-900 border-b border-gray-900/10 pb-2">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: creativePlanSummary.color }}></span>
+                        Package Benefits
+                      </h3>
+                      <ul className="space-y-1.5 flex-1 overflow-y-auto pr-1">
+                        {creativePlanSummary.benefits.map((benefit, idx) => (
+                          <li key={idx} className={`flex gap-2 text-xs ${benefit.includes('Includes') || benefit.includes('plus:') ? 'font-bold text-gray-800' : 'text-gray-700'}`}>
+                            <span className="flex-shrink-0 mt-0.5" style={{ color: creativePlanSummary.color }}>✓</span>
+                            <span>{benefit}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 </div>
 
-                {/* Project Details Section */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Project Info */}
-                  <div className="bg-white rounded-xl shadow-sm p-6">
-                    <h3 className="font-bold text-lg mb-4 text-gray-900">Project Details</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Project Name</p>
-                        <p className="text-base font-medium text-gray-900">{project.name}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Client</p>
-                        <p className="text-base font-medium text-gray-900">{users.find(u => u.id === project.clientId)?.name || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Timeline</p>
-                        <p className="text-base font-medium text-gray-900">{formatDateToIndian(project.startDate)} to {formatDateToIndian(project.deliveryDate)}</p>
-                      </div>
-                    </div>
+                {/* Creative Cards Section */}
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-lg text-gray-900">Creative Cards</h3>
                   </div>
 
-                  {/* Budget & Progress */}
-                  <div className="bg-white rounded-xl shadow-sm p-6">
-                    <h3 className="font-bold text-lg mb-4 text-gray-900">Budget & Progress</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Budget</p>
-                        <p className="text-2xl font-bold text-gray-900">{creativePlanSummary.budgetLabel}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Creative Delivery</p>
-                        <div className="flex gap-3">
-                          <div className="flex-1">
-                            <p className="text-sm text-gray-600 mb-1">Delivered</p>
-                            <p className="text-2xl font-bold text-green-600">{creativePlanSummary.deliveredCount}</p>
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm text-gray-600 mb-1">In Process</p>
-                            <p className="text-2xl font-bold text-blue-600">{creativePlanSummary.inProcessCount}</p>
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm text-gray-600 mb-1">Remaining</p>
-                            <p className="text-2xl font-bold text-yellow-600">{creativePlanSummary.remainingCount}</p>
+                  {/* Add Creative Form */}
+                  {(isAdmin || isLeadDesigner) && (
+                    <form onSubmit={handleAddCreative} className="flex flex-col sm:flex-row gap-2.5 mb-8 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                      <input
+                        type="text"
+                        value={newCreativeTitle}
+                        onChange={(e) => setNewCreativeTitle(e.target.value)}
+                        placeholder="Creative Name"
+                        className="sm:w-1/4 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={newCreativeDesc}
+                        onChange={(e) => setNewCreativeDesc(e.target.value)}
+                        placeholder="Description..."
+                        className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 outline-none"
+                        required
+                      />
+                      <select
+                        value={newCreativeAssignee}
+                        onChange={(e) => setNewCreativeAssignee(e.target.value)}
+                        className="sm:w-1/5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 outline-none bg-white"
+                      >
+                        <option value="">Designer...</option>
+                        {users.filter(u => u.role === Role.DESIGNER && (u.id === project.leadDesignerId || project.teamMembers?.includes(u.id))).map(designer => (
+                          <option key={designer.id} value={designer.id}>{designer.name.split(' ')[0]}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        disabled={!newCreativeDesc.trim()}
+                        className="px-4 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed font-medium whitespace-nowrap"
+                      >
+                        Add Card
+                      </button>
+                    </form>
+                  )}
+
+                  {/* Creatives List - Flip Cards Grid */}
+                  {!(project.creatives && project.creatives.length > 0) ? (
+                    <div className="text-center py-8 text-gray-500 italic bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                      No creative cards added yet.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {project.creatives.slice().reverse().map(creative => (
+                        <div key={creative.id} className={`group h-64 w-full cursor-pointer [perspective:1000px] ${creative.status === 'delivered' ? 'opacity-75 grayscale-[0.2]' : ''}`}>
+                          <div className="relative h-full w-full transition-all duration-500 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
+                            {/* Front */}
+                            <div 
+                              className="absolute inset-0 h-full w-full rounded-2xl p-5 shadow-sm border border-gray-200/50 [backface-visibility:hidden] flex flex-col justify-center items-center text-center"
+                              style={{ background: `linear-gradient(135deg, ${creativePlanSummary?.color || '#f3f4f6'}1a, ${creativePlanSummary?.color || '#e5e7eb'}40)` }}
+                            >
+                              <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                creative.status === 'delivered' 
+                                  ? 'bg-green-100 text-green-700' 
+                                  : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {creative.status === 'delivered' ? 'Delivered' : 'In Process'}
+                              </span>
+                              
+                              <div className="flex flex-col items-center justify-center flex-1 w-full">
+                                <div className="w-12 h-12 bg-white/60 backdrop-blur-sm rounded-full flex items-center justify-center mb-3 relative shadow-sm border border-white">
+                                  <span className="text-xl drop-shadow-sm">🎨</span>
+                                  {creative.assigneeId && (
+                                    <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-white rounded-full border border-gray-200 flex items-center justify-center overflow-hidden shadow-sm" title={`Assigned to ${users.find(u => u.id === creative.assigneeId)?.name}`}>
+                                      <span className="text-[8px] font-bold text-gray-900">{users.find(u => u.id === creative.assigneeId)?.name?.charAt(0).toUpperCase()}</span>
+                                    </div>
+                                  )}
+                                </div>
+                                <h4 className="font-bold text-gray-900 text-lg leading-tight line-clamp-2">
+                                  {creative.title || 'Untitled Creative'}
+                                </h4>
+                                <p className="text-xs text-gray-500 mt-2 font-medium">
+                                  Added {new Date(creative.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                </p>
+                              </div>
+
+                              {creative.assigneeId && (
+                                <div className="mt-auto pt-3 text-[10px] text-gray-500 font-medium border-t border-gray-200/50 w-full shrink-0">
+                                  For {users.find(u => u.id === creative.assigneeId)?.name?.split(' ')[0]}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Back */}
+                            <div className="absolute inset-0 h-full w-full rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-5 shadow-lg [backface-visibility:hidden] [transform:rotateY(180deg)] flex flex-col">
+                              <h4 className="font-bold text-white text-sm border-b border-gray-700 pb-2 mb-3 truncate shrink-0">
+                                {creative.title || 'Untitled Creative'}
+                              </h4>
+                              <div className="flex-1 overflow-y-auto pr-2 text-left [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded-full mb-3">
+                                <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
+                                  {creative.description}
+                                </p>
+                              </div>
+                              <div className="pt-2 mt-auto flex items-center justify-between shrink-0 border-t border-gray-700/50">
+                                <div className="flex flex-col text-[10px] text-gray-400 leading-tight">
+                                  <span>By {users.find(u => u.id === creative.createdBy)?.name?.split(' ')[0] || 'Unknown'}</span>
+                                  {creative.assigneeId && (
+                                    <span className="text-gray-300 font-medium mt-0.5">To {users.find(u => u.id === creative.assigneeId)?.name?.split(' ')[0]}</span>
+                                  )}
+                                </div>
+                                {creative.status === 'in-process' ? (
+                                  (isAdmin || isLeadDesigner) && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleMarkCreativeDelivered(creative.id); }}
+                                      className="px-3 py-1.5 text-xs font-bold text-gray-900 bg-white rounded-lg hover:bg-gray-100 transition-colors shadow-sm"
+                                    >
+                                      Mark Delivered
+                                    </button>
+                                  )
+                                ) : (
+                                  <span className="text-xs font-bold text-green-400 bg-green-400/10 px-2 py-1 rounded">Delivered ✓</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <p className="text-xs text-gray-500 mt-3">Progress: {creativePlanSummary.deliveredPercent}% completed of {creativePlanSummary.totalDesignQuota} creatives</p>
-                      </div>
+                      ))}
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* WORK CARDS TAB */}
+        {activeTab === 'work' && (
+          <div className="space-y-6 h-full flex flex-col p-4 md:p-6 max-w-6xl mx-auto w-full">
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-lg text-gray-900">Work Cards</h3>
+              </div>
+
+              {/* Add Work Card Form */}
+              {(isAdmin || isLeadDesigner) && (
+                <form onSubmit={handleAddWorkCard} className="flex flex-col sm:flex-row gap-2.5 mb-8 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                  <input
+                    type="text"
+                    value={newWorkTitle}
+                    onChange={(e) => setNewWorkTitle(e.target.value)}
+                    placeholder="Work Name"
+                    className="sm:w-1/4 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 outline-none"
+                  />
+                  <input
+                    type="text"
+                    value={newWorkDesc}
+                    onChange={(e) => setNewWorkDesc(e.target.value)}
+                    placeholder="Description..."
+                    className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 outline-none"
+                    required
+                  />
+                  <select
+                    value={newWorkAssignee}
+                    onChange={(e) => setNewWorkAssignee(e.target.value)}
+                    className="sm:w-1/5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 outline-none bg-white"
+                  >
+                    <option value="">Designer...</option>
+                    {users.filter(u => u.role === Role.DESIGNER && (u.id === project.leadDesignerId || project.teamMembers?.includes(u.id))).map(designer => (
+                      <option key={designer.id} value={designer.id}>{designer.name.split(' ')[0]}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={!newWorkDesc.trim()}
+                    className="px-4 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed font-medium whitespace-nowrap"
+                  >
+                    Add Card
+                  </button>
+                </form>
+              )}
+
+              {/* Work Cards List - Flip Cards Grid */}
+              {!(project.workCards && project.workCards.length > 0) ? (
+                <div className="text-center py-8 text-gray-500 italic bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                  No work cards added yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {project.workCards.slice().reverse().map(workCard => (
+                    <div key={workCard.id} className={`group h-64 w-full cursor-pointer [perspective:1000px] ${workCard.status === 'delivered' ? 'opacity-75 grayscale-[0.2]' : ''}`}>
+                      <div className="relative h-full w-full transition-all duration-500 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
+                        {/* Front */}
+                        <div className="absolute inset-0 h-full w-full rounded-2xl bg-gradient-to-br from-indigo-50 via-white to-blue-50 p-5 shadow-sm border border-indigo-100/50 [backface-visibility:hidden] flex flex-col justify-center items-center text-center">
+                          <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            workCard.status === 'delivered' 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {workCard.status === 'delivered' ? 'Delivered' : 'In Process'}
+                          </span>
+                          
+                          {/* Centered Content Wrapper */}
+                          <div className="flex flex-col items-center justify-center flex-1 w-full">
+                            <div className="w-12 h-12 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center mb-3 relative shadow-sm border border-indigo-50">
+                              <span className="text-xl drop-shadow-sm">🛠️</span>
+                              {workCard.assigneeId && (
+                                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-white rounded-full border border-gray-200 flex items-center justify-center overflow-hidden shadow-sm" title={`Assigned to ${users.find(u => u.id === workCard.assigneeId)?.name}`}>
+                                  <span className="text-[8px] font-bold text-gray-900">{users.find(u => u.id === workCard.assigneeId)?.name?.charAt(0).toUpperCase()}</span>
+                                </div>
+                              )}
+                            </div>
+                            <h4 className="font-bold text-gray-900 text-lg leading-tight line-clamp-2">
+                              {workCard.title || 'Untitled Work'}
+                            </h4>
+                            <p className="text-xs text-gray-500 mt-2 font-medium">
+                              Added {new Date(workCard.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                            </p>
+                          </div>
+
+                          {workCard.assigneeId && (
+                            <div className="mt-auto pt-3 text-[10px] text-gray-500 font-medium border-t border-indigo-100/50 w-full shrink-0">
+                              For {users.find(u => u.id === workCard.assigneeId)?.name?.split(' ')[0]}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Back */}
+                        <div className="absolute inset-0 h-full w-full rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-5 shadow-lg [backface-visibility:hidden] [transform:rotateY(180deg)] flex flex-col">
+                          <h4 className="font-bold text-white text-sm border-b border-gray-700 pb-2 mb-3 truncate shrink-0">
+                            {workCard.title || 'Untitled Work'}
+                          </h4>
+                          <div className="flex-1 overflow-y-auto pr-2 text-left [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded-full mb-3">
+                            <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
+                              {workCard.description}
+                            </p>
+                          </div>
+                          <div className="pt-2 mt-auto flex items-center justify-between shrink-0 border-t border-gray-700/50">
+                            <div className="flex flex-col text-[10px] text-gray-400 leading-tight">
+                              <span>By {users.find(u => u.id === workCard.createdBy)?.name?.split(' ')[0] || 'Unknown'}</span>
+                              {workCard.assigneeId && (
+                                <span className="text-gray-300 font-medium mt-0.5">To {users.find(u => u.id === workCard.assigneeId)?.name?.split(' ')[0]}</span>
+                              )}
+                            </div>
+                            {workCard.status === 'in-process' ? (
+                              (isAdmin || isLeadDesigner) && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleMarkWorkCardDelivered(workCard.id); }}
+                                  className="px-3 py-1.5 text-xs font-bold text-gray-900 bg-white rounded-lg hover:bg-gray-100 transition-colors shadow-sm"
+                                >
+                                  Mark Delivered
+                                </button>
+                              )
+                            ) : (
+                              <span className="text-xs font-bold text-green-400 bg-green-400/10 px-2 py-1 rounded">Delivered ✓</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -5324,16 +5722,15 @@ addNotification('Error', 'Failed to complete task', 'error');
 
         {/* TIMELINE TAB */}
         {activeTab === 'timeline' && !isVendor && (
-           <div className="max-w-lg mx-auto p-4 md:p-8">
-             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-8 overflow-hidden">
-               <h3 className="text-xl md:text-lg font-bold text-gray-800 mb-6">Project Timeline</h3>
-               <div className="relative border-l-2 border-gray-100 ml-3 space-y-8">
+           <div className="max-w-lg mx-auto p-4 md:p-8 w-full">
+             <h3 className="text-xl md:text-lg font-bold text-gray-800 mb-6">Project Timeline</h3>
+             <div className="relative border-l-2 border-gray-200 ml-3 space-y-8">
                   {(!realTimeTimelines || realTimeTimelines.length === 0) && (
                      <div className="pl-6 text-gray-400 italic">No timeline events yet. Add milestones to track project progress.</div>
                   )}
                   {realTimeTimelines?.sort((a, b) => {
-                    const timeA = new Date(a.endDate || a.startDate).getTime();
-                    const timeB = new Date(b.endDate || b.startDate).getTime();
+                    const timeA = parseChatTimestamp(a.createdAt || a.endDate || a.startDate);
+                    const timeB = parseChatTimestamp(b.createdAt || b.endDate || b.startDate);
                     return timeB - timeA; // Descending order (newest first)
                   }).map(timeline => (
                     <div key={timeline.id} className="relative pl-8">
@@ -5342,28 +5739,36 @@ addNotification('Error', 'Failed to complete task', 'error');
                         ${timeline.status === 'completed' ? 'bg-green-500' : timeline.status === 'in-progress' ? 'bg-blue-500' : 'bg-gray-400'}`} 
                       />
                       
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start">
-                         <div className="flex-1">
+                      <div className="flex flex-col gap-1.5">
+                         <div>
                             <p className="font-bold text-gray-800 text-lg md:text-base">{timeline.title || timeline.milestone}</p>
-                            <p className="text-gray-600 text-base md:text-sm mt-0.5">{timeline.description}</p>
-                            <div className="flex items-center gap-2 mt-2">
-                               <span className={`text-sm md:text-xs px-2.5 py-1.5 rounded-full font-medium
-                                 ${timeline.status === 'completed' ? 'bg-green-100 text-green-700' : 
-                                   timeline.status === 'in-progress' ? 'bg-blue-100 text-blue-700' : 
-                                   'bg-gray-100 text-gray-700'}`}>
-                                 {timeline.status}
-                               </span>
-                            </div>
+                            {timeline.description && <p className="text-gray-600 text-base md:text-sm mt-0.5">{timeline.description}</p>}
                          </div>
-                         <div className="text-sm md:text-xs text-gray-400 mt-2 sm:mt-0 font-mono whitespace-nowrap">
-                            <div>{formatDateToIndian(timeline.endDate || timeline.startDate)}</div>
-                            <div className="text-gray-300">{new Date(timeline.createdAt || timeline.endDate || timeline.startDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
+                         <div className="text-sm md:text-xs text-gray-500 font-mono">
+                            {(() => {
+                              const ts = parseChatTimestamp(timeline.createdAt || timeline.endDate || timeline.startDate);
+                              const formattedDate = ts ? new Date(ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace('am', 'AM').replace('pm', 'PM') : formatDateToIndian(timeline.endDate || timeline.startDate);
+                              const relTime = ts ? formatRelativeTime(new Date(ts).toISOString()) : '';
+                              return (
+                                <div>
+                                  <span className="font-medium text-gray-600">{formattedDate}</span>
+                                  {relTime && <span className="text-gray-400 ml-2">({relTime})</span>}
+                                </div>
+                              );
+                            })()}
+                         </div>
+                         <div className="mt-1">
+                            <span className={`inline-block text-sm md:text-xs px-2.5 py-1 rounded-full font-medium
+                              ${timeline.status === 'completed' ? 'bg-green-100 text-green-700' : 
+                                timeline.status === 'in-progress' ? 'bg-blue-100 text-blue-700' : 
+                                'bg-gray-100 text-gray-700'}`}>
+                              {timeline.status}
+                            </span>
                          </div>
                       </div>
                     </div>
                   ))}
                </div>
-             </div>
            </div>
         )}
         
@@ -5543,16 +5948,10 @@ addNotification('Error', 'Failed to complete task', 'error');
                       >
                           Designer
                       </button>
-                      <button 
-                          onClick={() => { setMemberModalType('member'); setSelectedMemberId(''); }}
-                          className={`flex-1 py-2 rounded font-medium text-sm transition-colors ${memberModalType === 'member' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                      >
-                          Vendor
-                      </button>
                   </div>
 
                   <div>
-                      <label className="text-sm font-bold text-gray-500 uppercase">Select {memberModalType === 'client' ? 'Clients' : memberModalType === 'designer' ? 'Designers' : 'Vendors'}</label>
+                      <label className="text-sm font-bold text-gray-500 uppercase">Select {memberModalType === 'client' ? 'Clients' : 'Designers'}</label>
                       <div className={`border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto mt-2 border-gray-300`}>
                           {memberModalType === 'client' 
                             ? users
@@ -5604,8 +6003,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                                         </label>
                                     ))
                                 )
-                            : memberModalType === 'designer'
-                            ? users
+                            : users
                                 .filter(u => u.role === Role.DESIGNER && u.id !== project.leadDesignerId && !((project.teamMembers || []).includes(u.id)))
                                 .length === 0 ? (
                                   <p className="text-gray-500 text-sm">No designers available to add</p>
@@ -5631,45 +6029,17 @@ addNotification('Error', 'Failed to complete task', 'error');
                                         </label>
                                     ))
                                 )
-                            : users
-                                .filter(u => u.role === Role.VENDOR && !((project.teamMembers || []).includes(u.id)))
-                                .length === 0 ? (
-                                  <p className="text-gray-500 text-sm">No vendors available to add</p>
-                                ) : (
-                                  users
-                                    .filter(u => u.role === Role.VENDOR && !((project.teamMembers || []).includes(u.id)))
-                                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-                                    .map(u => (
-                                        <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors">
-                                            <input 
-                                                type="checkbox"
-                                                checked={selectedMemberId.includes(u.id)}
-                                                onChange={(e) => {
-                                                    const current = selectedMemberId.split(',').filter(Boolean);
-                                                    const newIds = e.target.checked 
-                                                        ? [...current, u.id]
-                                                        : current.filter(id => id !== u.id);
-                                                    setSelectedMemberId(newIds.join(','));
-                                                }}
-                                                className="w-4 h-4 rounded border-gray-300 cursor-pointer"
-                                            />
-                                            <span className="text-sm text-gray-700">{u.name}</span>
-                                        </label>
-                                    ))
-                                )
                           }
                       </div>
                       <p className="text-xs text-gray-400 mt-2">
                           {memberModalType === 'client' 
                             ? 'Select clients to add as additional contacts for this project.' 
-                            : memberModalType === 'designer'
-                            ? 'Select designers to add to this project.'
-                            : 'Select vendors to add to this project.'}
+                            : 'Select designers to add to this project.'}
                       </p>
                   </div>
                   <div className="flex gap-3 pt-2">
                       <button onClick={() => { setIsMemberModalOpen(false); setSelectedMemberId(''); }} className="flex-1 py-2 text-gray-500 hover:bg-gray-100 rounded">Cancel</button>
-                      <button onClick={handleInviteMember} className="flex-1 py-2 bg-gray-900 text-white rounded font-bold hover:bg-gray-800">Add {memberModalType === 'client' ? 'Clients' : memberModalType === 'designer' ? 'Designers' : 'Vendors'}</button>
+                      <button onClick={handleInviteMember} className="flex-1 py-2 bg-gray-900 text-white rounded font-bold hover:bg-gray-800">Add {memberModalType === 'client' ? 'Clients' : 'Designers'}</button>
                   </div>
                </div>
            </div>
@@ -8654,12 +9024,13 @@ addNotification('Error', 'Failed to complete task', 'error');
       {/* Status Change Confirmation Dialog */}
       <ConfirmDialog
         isOpen={isStatusConfirmOpen}
+        onClose={() => setIsStatusConfirmOpen(false)}
         title={statusConfirmData.title}
         message={statusConfirmData.message}
         onConfirm={statusConfirmData.onConfirm}
-        onCancel={() => setIsStatusConfirmOpen(false)}
-        confirmLabel="Confirm"
-        isDestructive={statusConfirmData.nextStatus === ProjectStatus.ON_HOLD}
+        confirmText="Confirm"
+        cancelText="Cancel"
+        variant={statusConfirmData.nextStatus === ProjectStatus.ON_HOLD ? 'danger' : 'info'}
       />
     </div>
   );

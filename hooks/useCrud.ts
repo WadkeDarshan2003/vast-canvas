@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { Project, User, FinancialRecord, Task, Meeting, ProjectDocument, Comment, Timeline, SubTask } from '../types';
+import { Project, User, FinancialRecord, Task, Meeting, ProjectDocument, Comment, Timeline, SubTask, Plan } from '../types';
 import {
   createProject,
   updateProject,
   deleteProject,
   createUser,
-  updateUser
+  updateUser,
+  createPlan,
+  updatePlan,
+  deletePlan
 } from '../services/firebaseService';
 import {
   createTask,
@@ -92,6 +95,55 @@ export const useProjectCrud = () => {
   };
 };
 
+export const usePlanCrud = () => {
+  const [state, setState] = useState<UseCrudState>({
+    loading: false,
+    error: null,
+    success: false
+  });
+
+  const createNewPlan = async (plan: Omit<Plan, 'id'>) => {
+    setState({ loading: true, error: null, success: false });
+    try {
+      const id = await createPlan(plan);
+      setState({ loading: false, error: null, success: true });
+      return id;
+    } catch (error: any) {
+      setState({ loading: false, error: error.message, success: false });
+      throw error;
+    }
+  };
+
+  const updateExistingPlan = async (planId: string, updates: Partial<Plan>) => {
+    setState({ loading: true, error: null, success: false });
+    try {
+      await updatePlan(planId, updates);
+      setState({ loading: false, error: null, success: true });
+    } catch (error: any) {
+      setState({ loading: false, error: error.message, success: false });
+      throw error;
+    }
+  };
+
+  const deleteExistingPlan = async (planId: string) => {
+    setState({ loading: true, error: null, success: false });
+    try {
+      await deletePlan(planId);
+      setState({ loading: false, error: null, success: true });
+    } catch (error: any) {
+      setState({ loading: false, error: error.message, success: false });
+      throw error;
+    }
+  };
+
+  return {
+    ...state,
+    createNewPlan,
+    updateExistingPlan,
+    deleteExistingPlan
+  };
+};
+
 export const useUserCrud = () => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
@@ -129,7 +181,7 @@ export const useUserCrud = () => {
   };
 };
 
-export const useFinancialCrud = (projectId: string) => {
+export const useFinancialCrud = (projectId: string, parentCollection: string = "projects") => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
     error: null,
@@ -139,7 +191,7 @@ export const useFinancialCrud = (projectId: string) => {
   const createNewRecord = async (record: Omit<FinancialRecord, 'id'>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      const id = await createProjectFinancialRecord(projectId, record);
+      const id = await createProjectFinancialRecord(projectId, record, parentCollection);
       setState({ loading: false, error: null, success: true });
       return id;
     } catch (error: any) {
@@ -151,7 +203,7 @@ export const useFinancialCrud = (projectId: string) => {
   const updateExistingRecord = async (recordId: string, updates: Partial<FinancialRecord>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await updateProjectFinancialRecord(projectId, recordId, updates);
+      await updateProjectFinancialRecord(projectId, recordId, updates, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -162,7 +214,7 @@ export const useFinancialCrud = (projectId: string) => {
   const deleteExistingRecord = async (recordId: string) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await deleteProjectFinancialRecord(projectId, recordId);
+      await deleteProjectFinancialRecord(projectId, recordId, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -179,7 +231,7 @@ export const useFinancialCrud = (projectId: string) => {
 };
 
 // ============ TASK CRUD ============
-export const useTaskCrud = (projectId: string) => {
+export const useTaskCrud = (projectId: string, parentCollection: string = "projects") => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
     error: null,
@@ -189,7 +241,7 @@ export const useTaskCrud = (projectId: string) => {
   const createNewTask = async (task: Omit<Task, 'id'>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      const id = await createTask(projectId, task);
+      const id = await createTask(projectId, task, parentCollection);
       setState({ loading: false, error: null, success: true });
       return id;
     } catch (error: any) {
@@ -201,7 +253,7 @@ export const useTaskCrud = (projectId: string) => {
   const updateExistingTask = async (taskId: string, updates: Partial<Task>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await updateTask(projectId, taskId, updates);
+      await updateTask(projectId, taskId, updates, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -212,7 +264,7 @@ export const useTaskCrud = (projectId: string) => {
   const deleteExistingTask = async (taskId: string) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await deleteTask(projectId, taskId);
+      await deleteTask(projectId, taskId, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -229,7 +281,7 @@ export const useTaskCrud = (projectId: string) => {
 };
 
 // ============ MEETING CRUD ============
-export const useMeetingCrud = (projectId: string) => {
+export const useMeetingCrud = (projectId: string, parentCollection: string = "projects") => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
     error: null,
@@ -239,7 +291,7 @@ export const useMeetingCrud = (projectId: string) => {
   const createNewMeeting = async (meeting: Omit<Meeting, 'id'>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      const id = await createMeeting(projectId, meeting);
+      const id = await createMeeting(projectId, meeting, parentCollection);
       setState({ loading: false, error: null, success: true });
       return id;
     } catch (error: any) {
@@ -251,7 +303,7 @@ export const useMeetingCrud = (projectId: string) => {
   const updateExistingMeeting = async (meetingId: string, updates: Partial<Meeting>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await updateMeeting(projectId, meetingId, updates);
+      await updateMeeting(projectId, meetingId, updates, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -262,7 +314,7 @@ export const useMeetingCrud = (projectId: string) => {
   const deleteExistingMeeting = async (meetingId: string) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await deleteMeeting(projectId, meetingId);
+      await deleteMeeting(projectId, meetingId, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -279,7 +331,7 @@ export const useMeetingCrud = (projectId: string) => {
 };
 
 // ============ DOCUMENT CRUD ============
-export const useDocumentCrud = (projectId: string) => {
+export const useDocumentCrud = (projectId: string, parentCollection: string = "projects") => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
     error: null,
@@ -289,7 +341,7 @@ export const useDocumentCrud = (projectId: string) => {
   const createNewDocument = async (doc: Omit<ProjectDocument, 'id'>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      const id = await createDocument(projectId, doc);
+      const id = await createDocument(projectId, doc, parentCollection);
       setState({ loading: false, error: null, success: true });
       return id;
     } catch (error: any) {
@@ -301,7 +353,7 @@ export const useDocumentCrud = (projectId: string) => {
   const updateExistingDocument = async (docId: string, updates: Partial<ProjectDocument>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await updateDocument(projectId, docId, updates);
+      await updateDocument(projectId, docId, updates, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -312,7 +364,7 @@ export const useDocumentCrud = (projectId: string) => {
   const deleteExistingDocument = async (docId: string) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await deleteDocument(projectId, docId);
+      await deleteDocument(projectId, docId, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -329,7 +381,7 @@ export const useDocumentCrud = (projectId: string) => {
 };
 
 // ============ COMMENT CRUD ============
-export const useCommentCrud = (projectId: string, documentId: string) => {
+export const useCommentCrud = (projectId: string, documentId: string, parentCollection: string = "projects") => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
     error: null,
@@ -339,7 +391,7 @@ export const useCommentCrud = (projectId: string, documentId: string) => {
   const addNewComment = async (comment: Omit<Comment, 'id'>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      const id = await addCommentToDocument(projectId, documentId, comment);
+      const id = await addCommentToDocument(projectId, documentId, comment, parentCollection);
       setState({ loading: false, error: null, success: true });
       return id;
     } catch (error: any) {
@@ -351,7 +403,7 @@ export const useCommentCrud = (projectId: string, documentId: string) => {
   const deleteExistingComment = async (commentId: string) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await deleteCommentFromDocument(projectId, documentId, commentId);
+      await deleteCommentFromDocument(projectId, documentId, commentId, undefined, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -404,7 +456,7 @@ export const useTeamMemberCrud = (projectId: string) => {
 };
 
 // ============ TIMELINE CRUD ============
-export const useTimelineCrud = (projectId: string) => {
+export const useTimelineCrud = (projectId: string, parentCollection: string = "projects") => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
     error: null,
@@ -414,7 +466,7 @@ export const useTimelineCrud = (projectId: string) => {
   const createNewTimeline = async (timeline: Omit<Timeline, 'id'>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      const id = await createTimeline(projectId, timeline);
+      const id = await createTimeline(projectId, timeline, parentCollection);
       setState({ loading: false, error: null, success: true });
       return id;
     } catch (error: any) {
@@ -426,7 +478,7 @@ export const useTimelineCrud = (projectId: string) => {
   const updateExistingTimeline = async (timelineId: string, updates: Partial<Timeline>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await updateTimeline(projectId, timelineId, updates);
+      await updateTimeline(projectId, timelineId, updates, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -437,7 +489,7 @@ export const useTimelineCrud = (projectId: string) => {
   const deleteExistingTimeline = async (timelineId: string) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await deleteTimeline(projectId, timelineId);
+      await deleteTimeline(projectId, timelineId, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -454,7 +506,7 @@ export const useTimelineCrud = (projectId: string) => {
 };
 
 // ============ TASK CHECKLIST CRUD ============
-export const useChecklistCrud = (projectId: string, taskId: string) => {
+export const useChecklistCrud = (projectId: string, taskId: string, parentCollection: string = "projects") => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
     error: null,
@@ -464,7 +516,7 @@ export const useChecklistCrud = (projectId: string, taskId: string) => {
   const addNewChecklistItem = async (checklist: Omit<SubTask, 'id'>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      const id = await addChecklistItem(projectId, taskId, checklist);
+      const id = await addChecklistItem(projectId, taskId, checklist, parentCollection);
       setState({ loading: false, error: null, success: true });
       return id;
     } catch (error: any) {
@@ -476,7 +528,7 @@ export const useChecklistCrud = (projectId: string, taskId: string) => {
   const updateExistingChecklistItem = async (checklistId: string, updates: Partial<SubTask>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await updateChecklistItem(projectId, taskId, checklistId, updates);
+      await updateChecklistItem(projectId, taskId, checklistId, updates, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -487,7 +539,7 @@ export const useChecklistCrud = (projectId: string, taskId: string) => {
   const deleteExistingChecklistItem = async (checklistId: string) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await deleteChecklistItem(projectId, taskId, checklistId);
+      await deleteChecklistItem(projectId, taskId, checklistId, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -504,7 +556,7 @@ export const useChecklistCrud = (projectId: string, taskId: string) => {
 };
 
 // ============ TASK COMMENT CRUD ============
-export const useTaskCommentCrud = (projectId: string, taskId: string) => {
+export const useTaskCommentCrud = (projectId: string, taskId: string, parentCollection: string = "projects") => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
     error: null,
@@ -514,7 +566,7 @@ export const useTaskCommentCrud = (projectId: string, taskId: string) => {
   const addNewTaskComment = async (comment: Omit<Comment, 'id'>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      const id = await addCommentToTask(projectId, taskId, comment);
+      const id = await addCommentToTask(projectId, taskId, comment, parentCollection);
       setState({ loading: false, error: null, success: true });
       return id;
     } catch (error: any) {
@@ -526,7 +578,7 @@ export const useTaskCommentCrud = (projectId: string, taskId: string) => {
   const deleteExistingTaskComment = async (commentId: string) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await deleteCommentFromTask(projectId, taskId, commentId);
+      await deleteCommentFromTask(projectId, taskId, commentId, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -542,7 +594,7 @@ export const useTaskCommentCrud = (projectId: string, taskId: string) => {
 };
 
 // ============ TASK APPROVAL CRUD ============
-export const useTaskApprovalCrud = (projectId: string, taskId: string) => {
+export const useTaskApprovalCrud = (projectId: string, taskId: string, parentCollection: string = "projects") => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
     error: null,
@@ -552,7 +604,7 @@ export const useTaskApprovalCrud = (projectId: string, taskId: string) => {
   const updateTaskApprovalStatus = async (stage: 'start' | 'completion', approval: any) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await updateTaskApproval(projectId, taskId, stage, approval);
+      await updateTaskApproval(projectId, taskId, stage, approval, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -567,7 +619,7 @@ export const useTaskApprovalCrud = (projectId: string, taskId: string) => {
 };
 
 // ============ PROJECT FINANCIAL RECORD CRUD ============
-export const useProjectFinancialCrud = (projectId: string) => {
+export const useProjectFinancialCrud = (projectId: string, parentCollection: string = "projects") => {
   const [state, setState] = useState<UseCrudState>({
     loading: false,
     error: null,
@@ -577,7 +629,7 @@ export const useProjectFinancialCrud = (projectId: string) => {
   const createNewFinancialRecord = async (record: Omit<FinancialRecord, 'id'>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      const id = await createProjectFinancialRecord(projectId, record);
+      const id = await createProjectFinancialRecord(projectId, record, parentCollection);
       setState({ loading: false, error: null, success: true });
       return id;
     } catch (error: any) {
@@ -589,7 +641,7 @@ export const useProjectFinancialCrud = (projectId: string) => {
   const updateExistingFinancialRecord = async (recordId: string, updates: Partial<FinancialRecord>) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await updateProjectFinancialRecord(projectId, recordId, updates);
+      await updateProjectFinancialRecord(projectId, recordId, updates, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });
@@ -600,7 +652,7 @@ export const useProjectFinancialCrud = (projectId: string) => {
   const deleteExistingFinancialRecord = async (recordId: string) => {
     setState({ loading: true, error: null, success: false });
     try {
-      await deleteProjectFinancialRecord(projectId, recordId);
+      await deleteProjectFinancialRecord(projectId, recordId, parentCollection);
       setState({ loading: false, error: null, success: true });
     } catch (error: any) {
       setState({ loading: false, error: error.message, success: false });

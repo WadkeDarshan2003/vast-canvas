@@ -238,7 +238,6 @@ export const subscribeToPlans = (callback: (plans: Plan[]) => void, tenantId?: s
     });
   }
 
-  // Single tenant case (admin, client, etc.)
   let q = query(plansRef);
   if (tenantId) {
     q = query(plansRef, where('tenantId', '==', tenantId));
@@ -371,10 +370,10 @@ export const claimPhoneUserProfile = async (uid: string, phoneNumber: string): P
       return userData;
     }
 
-    // Second try: Search vendors by phone number (first login case)
-    console.log(`📱 UID not found, searching vendors by phone...`);
+    // Second try: Search users by phone number (first login case)
+    console.log(`📱 UID not found, searching users by phone...`);
 
-    const vendorsRef = collection(db, "vendors");
+    const usersRef = collection(db, "users");
 
     // Normalize the phone from Firebase Auth (digits only)
     // Firebase returns phone like "+919307710946"
@@ -382,13 +381,13 @@ export const claimPhoneUserProfile = async (uid: string, phoneNumber: string): P
     const normalizedSearchPhone = phoneNumber.replace(/\D/g, ''); // Just digits
     console.log(`🔎 Searching with normalized phone: "${normalizedSearchPhone}"`);
 
-    const q = query(vendorsRef, where("phone", "==", normalizedSearchPhone));
+    const q = query(usersRef, where("phone", "==", normalizedSearchPhone));
     const querySnap = await getDocs(q);
 
     if (!querySnap.empty) {
       const oldDocData = querySnap.docs[0].data() as User;
       const oldDocId = querySnap.docs[0].id;
-      console.log(`✅ Found vendor by phone: ${normalizedSearchPhone}, oldID: ${oldDocId}`);
+      console.log(`✅ Found user by phone: ${normalizedSearchPhone}, role: ${oldDocData.role}, oldID: ${oldDocId}`);
 
       let finalData = oldDocData;
 
@@ -402,26 +401,27 @@ export const claimPhoneUserProfile = async (uid: string, phoneNumber: string): P
         console.log(`🔄 Migrating document from ${oldDocId} to real UID: ${uid}`);
 
         // Update data with new UID and tenantId
-        const updatedData = { ...oldDocData, id: uid, tenantId: uid };
+        const updatedData = { ...oldDocData, id: uid, tenantId: oldDocData.tenantId || uid };
         finalData = updatedData;
 
         // Save to new UID location in users collection
         await setDoc(doc(db, "users", uid), updatedData);
 
-        // Save to new UID location in vendors collection
-        await setDoc(doc(db, "vendors", uid), updatedData);
+        // Save to new UID location in role-specific collection
+        const roleCollection = String(oldDocData.role).toLowerCase() + 's'; // designers, clients, vendors, admins
+        await setDoc(doc(db, roleCollection, uid), updatedData);
 
         // Delete old temporary documents (from ALL sources to prevent duplicates)
         console.log(`🗑️ Deleting old documents with ID: ${oldDocId}`);
         await deleteDoc(doc(db, "users", oldDocId));
-        await deleteDoc(doc(db, "vendors", oldDocId));
+        await deleteDoc(doc(db, roleCollection, oldDocId));
         console.log(`✅ Deleted old documents with ID: ${oldDocId}`);
       }
 
       return finalData;
     }
 
-    console.log(`❌ No vendor found with phone: ${normalizedSearchPhone}`);
+    console.log(`❌ No user found with phone: ${normalizedSearchPhone}`);
     return null;
   } catch (error) {
     console.error("Error claiming phone profile:", error);
@@ -452,31 +452,17 @@ export const updateUser = async (userId: string, updates: Partial<User>): Promis
 
 // Real-time listener for users
 export const subscribeToUsers = (callback: (users: User[]) => void, tenantId?: string): Unsubscribe => {
-
-  let allUsers: User[] = [];
-  let unsubscribers: Unsubscribe[] = [];
-
   let q = query(usersRef);
   if (tenantId) {
     q = query(usersRef, where('tenantId', '==', tenantId));
   }
 
-  // Listen to main users collection
-  const unsubUser = onSnapshot(q, (snapshot) => {
+  return onSnapshot(q, (snapshot) => {
     const users = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as User));
-    // Real-time update received for users
-    allUsers = users;
-    callback(allUsers);
+    callback(users);
   }, (error) => {
     console.error('❌ Error in users collection listener:', error);
   });
-
-  unsubscribers.push(unsubUser);
-
-  // Return cleanup function
-  return () => {
-    unsubscribers.forEach(unsub => unsub());
-  };
 };
 
 // ============ BULK OPERATIONS ============

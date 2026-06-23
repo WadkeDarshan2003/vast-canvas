@@ -10,8 +10,7 @@ export const CATEGORY_ORDER = [
   'Illustration'
 ];
 
-// --- Users ---
-export const MOCK_USERS: User[] = [];
+
 
 
 const createDefaultApprovals = () => ({
@@ -68,5 +67,4 @@ const generateProject = (id: string, name: string, status: ProjectStatus, client
   activityLog: []
 });
 
-
-export const MOCK_PROJECTS: Project[] = [];
+

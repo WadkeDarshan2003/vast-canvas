@@ -60,6 +60,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
   const { user } = useAuth();
   const { addNotification } = useNotifications();
 
+  const [dashboardTab, setDashboardTab] = useState<'all' | 'projects' | 'plans'>('all');
   const [realTimeTasks, setRealTimeTasks] = useState<Map<string, Task[]>>(new Map());
   const [realTimeDocuments, setRealTimeDocuments] = useState<Map<string, ProjectDocument[]>>(new Map());
   const [realTimeFinancials, setRealTimeFinancials] = useState<Map<string, FinancialRecord[]>>(new Map());
@@ -132,57 +133,43 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
   if (!user) return null;
 
   const getProjectTasks = (projectId: string): Task[] => {
-    return realTimeTasks.get(projectId) || projects.find((p) => p.id === projectId)?.tasks || [];
+    return (
+      realTimeTasks.get(projectId) ||
+      projects.find((p) => p.id === projectId)?.tasks ||
+      (plans.find((p) => p.id === projectId) as any)?.tasks ||
+      []
+    );
   };
 
   const getProjectDocuments = (projectId: string): ProjectDocument[] => {
-    return realTimeDocuments.get(projectId) || projects.find((p) => p.id === projectId)?.documents || [];
+    return (
+      realTimeDocuments.get(projectId) ||
+      projects.find((p) => p.id === projectId)?.documents ||
+      plans.find((p) => p.id === projectId)?.documents ||
+      []
+    );
   };
 
   const getProjectFinancials = (projectId: string): FinancialRecord[] => {
-    return realTimeFinancials.get(projectId) || projects.find((p) => p.id === projectId)?.financials || [];
+    return (
+      realTimeFinancials.get(projectId) ||
+      projects.find((p) => p.id === projectId)?.financials ||
+      (plans.find((p) => p.id === projectId) as any)?.financials ||
+      []
+    );
   };
 
-  const visibleProjects = useMemo(() => {
-    if (user.role === Role.ADMIN) return projects;
+  // The `projects` and `plans` props are already pre-filtered by App.tsx
+  const visibleProjects = projects;
+  const visiblePlans = plans;
 
-    if (user.role === Role.DESIGNER) {
-      return projects.filter(
-        (project) => project.leadDesignerId === user.id || (project.teamMembers || []).includes(user.id)
-      );
-    }
-
-    if (user.role === Role.CLIENT) {
-      return projects.filter((project) => {
-        const allClientIds = [project.clientId, ...(project.clientIds || [])].filter(Boolean) as string[];
-        return allClientIds.includes(user.id);
-      });
-    }
-
-    return [];
-  }, [projects, user.id, user.role]);
-
-  const visiblePlans = useMemo(() => {
-    if (user.role === Role.ADMIN) return plans;
-
-    if (user.role === Role.DESIGNER) {
-      return plans.filter(
-        (plan) => plan.leadDesignerId === user.id || (plan.teamMembers || []).includes(user.id)
-      );
-    }
-
-    if (user.role === Role.CLIENT) {
-      return plans.filter((plan) => {
-        const allClientIds = [plan.clientId, ...(plan.clientIds || [])].filter(Boolean) as string[];
-        return allClientIds.includes(user.id);
-      });
-    }
-
-    return [];
-  }, [plans, user.id, user.role]);
+  const allWork = useMemo(() => {
+    if (dashboardTab === 'projects') return visibleProjects;
+    if (dashboardTab === 'plans') return visiblePlans;
+    return [...visibleProjects, ...visiblePlans];
+  }, [visibleProjects, visiblePlans, dashboardTab]) as any[];
 
   const openTaskItems = useMemo(() => {
-    const allWork = [...visibleProjects, ...visiblePlans];
     const pool = allWork.flatMap((project) =>
       getProjectTasks(project.id).map((task) => ({ task, project: project as Project }))
     );
@@ -197,11 +184,10 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
         item.task.status !== TaskStatus.ABORTED &&
         item.task.status !== TaskStatus.ON_HOLD
     );
-  }, [visibleProjects, realTimeTasks, user.id, user.role]);
+  }, [allWork, realTimeTasks, user.id, user.role]);
 
   const approvalItems = useMemo(() => {
     const items: ApprovalItem[] = [];
-    const allWork = [...visibleProjects, ...visiblePlans];
 
     allWork.forEach((project) => {
       const tasks = getProjectTasks(project.id);
@@ -282,10 +268,9 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
     });
 
     return items;
-  }, [visibleProjects, realTimeTasks, realTimeDocuments, realTimeFinancials, user.id, user.role]);
+  }, [allWork, realTimeTasks, realTimeDocuments, realTimeFinancials, user.id, user.role]);
 
   const recentProjects = useMemo(() => {
-    const allWork = [...visibleProjects, ...visiblePlans];
     return [...allWork]
       .sort((a, b) => {
         const aTs = Math.max(
@@ -301,7 +286,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
         return bTs - aTs;
       })
       .slice(0, 4) as Project[];
-  }, [visibleProjects, realTimeTasks]);
+  }, [allWork, realTimeTasks]);
 
   const upcomingTasks = useMemo(() => {
     return [...openTaskItems]
@@ -320,8 +305,6 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
     }).length;
   }, [openTaskItems]);
 
-
-
   const openApprovalItem = (item: ApprovalItem) => {
     if (item.type === 'task' && item.task) {
       onSelectTask?.(item.task, item.project);
@@ -336,23 +319,26 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
     onSelectProject?.(item.project, { initialTab: 'financials' });
   };
 
-  const totalWorkCount = visibleProjects.length + visiblePlans.length;
+  const totalWorkCount = allWork.length;
   const openTasks = openTaskItems.length;
   const pendingApprovals = approvalItems.length;
   const avgProgress =
     totalWorkCount === 0
       ? 0
       : Math.round(
-          [...visibleProjects, ...visiblePlans].reduce((sum, project) => sum + calculateProjectProgress(getProjectTasks(project.id)), 0) /
-            totalWorkCount
-        );
+        allWork.reduce((sum, project) => sum + calculateProjectProgress(getProjectTasks(project.id)), 0) /
+        totalWorkCount
+      );
 
   const packageCreativeSummary = useMemo(() => {
-    // Sync creative counts from both plans and regular projects that have a package assigned
     const projectsWithPackage = visibleProjects.filter(p => !!p.packageType);
-    const combinedPlans = [...(projectsWithPackage as any[]), ...visiblePlans];
+    const combinedPlans = (dashboardTab === 'projects'
+      ? projectsWithPackage
+      : dashboardTab === 'plans'
+        ? visiblePlans
+        : [...projectsWithPackage, ...visiblePlans]) as Plan[];
     return buildPlanCreativeSummary(combinedPlans, availablePackages);
-  }, [visibleProjects, visiblePlans, availablePackages]);
+  }, [visibleProjects, visiblePlans, availablePackages, dashboardTab]);
 
   const dashboardPackagePalette: Record<
     ProjectPackage,
@@ -364,7 +350,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
       meta: string;
     }
   > = {
-    [ProjectPackage.PACKAGE_50]: {
+    [ProjectPackage.PACKAGE_20]: {
       // Starter plan pink
       cardBg: '#FEF0F5',
       border: '#E8356E',
@@ -372,7 +358,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
       value: '#E8356E',
       meta: '#BE185D',
     },
-    [ProjectPackage.PACKAGE_100]: {
+    [ProjectPackage.PACKAGE_50]: {
       // Growth plan orange
       cardBg: '#FFF5F0',
       border: '#FF6B35',
@@ -380,7 +366,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
       value: '#FF6B35',
       meta: '#C2410C',
     },
-    [ProjectPackage.PACKAGE_200]: {
+    [ProjectPackage.PACKAGE_100]: {
       // Business plan teal
       cardBg: '#F0FDFB',
       border: '#3CB89F',
@@ -403,7 +389,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
       <section className="rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 p-6 md:p-8 text-white">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Workspace Snapshot</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Workspace</p>
             <h2 className="text-2xl md:text-3xl font-bold mt-2 flex items-center gap-2">
               <Sparkles className="w-6 h-6 text-amber-300" />
               Fresh Dashboard
@@ -425,6 +411,39 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
           </div>
         </div>
       </section>
+
+      {/* Segment Selector for Dashboard Snapshot */}
+      <div className="flex justify-start pb-2">
+        <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner gap-1 border border-slate-200/50">
+          <button
+            onClick={() => setDashboardTab('all')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all duration-300 ${dashboardTab === 'all'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+              }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setDashboardTab('projects')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all duration-300 ${dashboardTab === 'projects'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+              }`}
+          >
+            Projects
+          </button>
+          <button
+            onClick={() => setDashboardTab('plans')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all duration-300 ${dashboardTab === 'plans'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+              }`}
+          >
+            Plans
+          </button>
+        </div>
+      </div>
 
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm dashboard-card">
@@ -460,9 +479,10 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
         </div>
       </section>
 
+      {dashboardTab !== 'projects' && (
       <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 dashboard-card">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h3 className="text-base font-bold text-gray-900">Package Project Counts</h3>
+          <h3 className="text-base font-bold text-gray-900">Package Plans Counts</h3>
           <span className="text-xs font-semibold text-gray-500">
             {packageCreativeSummary.totalProjectCount} projects assigned
           </span>
@@ -472,8 +492,9 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
           {packageCreativeSummary.byPackage.map((item) => {
             const visuals = PACKAGE_VISUALS[item.packageType];
             const palette = dashboardPackagePalette[item.packageType];
-            const perProjectLabel =
-              item.creativesPerProject > 0 ? `${item.creativesPerProject} per project` : 'Custom quota';
+            const creativesLabel = visuals.creativesPerYear > 0
+              ? `${visuals.creativesPerYear} creatives`
+              : 'Custom quota';
 
             return (
               <div
@@ -488,7 +509,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
                   className="text-xs font-semibold uppercase tracking-wide"
                   style={{ color: palette.title }}
                 >
-                  {visuals.shortLabel}
+                  {visuals.planName}
                 </p>
                 <p
                   className="text-2xl font-bold mt-2"
@@ -497,13 +518,14 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
                   {item.projectCount}
                 </p>
                 <p className="text-xs mt-1" style={{ color: palette.meta }}>
-                  project{item.projectCount === 1 ? '' : 's'} · {perProjectLabel}
+                  Plan{item.projectCount === 1 ? '' : 's'} · {creativesLabel}
                 </p>
               </div>
             );
           })}
         </div>
       </section>
+      )}
 
       <section className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 bg-white border border-gray-200 rounded-xl shadow-sm p-5 dashboard-card">
@@ -600,9 +622,9 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
         </div>
       </section>
 
-      <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 dashboard-card">
+      <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 dashboard-card mb-12">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-bold text-gray-900">Approvals Snapshot</h3>
+          <h3 className="text-base font-bold text-gray-900">Approvals</h3>
           <span className="text-xs font-semibold text-gray-500">{pendingApprovals} pending</span>
         </div>
 

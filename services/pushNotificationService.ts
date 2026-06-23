@@ -7,12 +7,12 @@ const ensureMessagingServiceWorkerRegistration = async (): Promise<ServiceWorker
     return null;
   }
 
-  const existingRegistration = await navigator.serviceWorker.getRegistration('/sw.js');
+  const existingRegistration = await navigator.serviceWorker.getRegistration('./sw.js');
   if (existingRegistration) {
     return existingRegistration;
   }
 
-  return navigator.serviceWorker.register('/sw.js');
+  return navigator.serviceWorker.register('./sw.js');
 };
 
 export const requestNotificationPermission = async (userId: string): Promise<string | null> => {

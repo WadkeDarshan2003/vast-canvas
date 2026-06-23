@@ -15,6 +15,8 @@ import { getProjectFinancialRecords } from '../services/financialService'; // Fi
 import { AvatarCircle, getInitials } from '../utils/avatarUtils'; // Avatar utilities
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import ConfirmDialog from './ConfirmDialog';
+import { sendUserWelcomeEmail } from '../services/emailTriggerService';
+
 
 interface PeopleListProps {
   users: User[];
@@ -282,12 +284,9 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
         return;
       }
 
-      // For users with phone-based auth, they don't need an email
-      let emailForAuth = newUser.email;
-      if (authMethod === 'phone') {
-        // Phone auth users: no email needed, just use placeholder
-        emailForAuth = '';
-      }
+      // For users with phone-based auth, they don't need a Firebase Auth account created immediately
+      // but we still want to save their email address if provided
+      const emailForAuth = authMethod === 'phone' ? '' : (newUser.email || '');
 
       // Generate password from last 6 digits of phone number
       const phoneDigits = (newUser.phone || '').replace(/\D/g, '');
@@ -297,7 +296,7 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
       const firebaseUid = await createUserInFirebase({
         id: '', // Will be set by Firebase
         name: newUser.name!,
-        email: emailForAuth || '', // Empty for phone auth users
+        email: newUser.email || '', // Save email in Firestore even if phone auth
         role: newUser.role!,
         company: newUser.company || undefined,
         specialty: newUser.specialty || undefined,
@@ -315,7 +314,7 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
       const userToAdd: User = {
         id: firebaseUid,
         name: newUser.name!,
-        email: (authMethod === 'phone') ? '' : newUser.email!,
+        email: newUser.email || '', // Save email in local user state
         role: newUser.role!,
         company: newUser.company || undefined,
         specialty: newUser.specialty || undefined,
@@ -327,6 +326,15 @@ const PeopleList: React.FC<PeopleListProps> = ({ users, roleFilter, onAddUser, p
           : undefined,
         createdBy: currentUser?.id
       };
+
+      // Trigger welcome email with credentials if email is provided
+      if (newUser.email) {
+        try {
+          await sendUserWelcomeEmail(userToAdd, generatedPassword);
+        } catch (emailErr) {
+          console.warn('Error sending welcome credentials email:', emailErr);
+        }
+      }
 
       // Don't add to local state immediately - let Firebase subscription handle all users
       // This prevents duplicates when both local state and Firebase listener update

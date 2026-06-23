@@ -28,7 +28,8 @@ export const logTimelineEvent = async (
   description: string,
   status: 'planned' | 'in-progress' | 'completed' | 'delayed' = 'completed',
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  parentCollection: string = "projects"
 ): Promise<string> => {
   try {
     // Get current timestamp with time
@@ -79,7 +80,7 @@ export const logTimelineEvent = async (
       endDate: validEndDate,
       createdAt: new Date().toISOString()
     };
-    return await createTimeline(projectId, timelineEvent);
+    return await createTimeline(projectId, timelineEvent, parentCollection);
   } catch (error) {
     console.error("Error logging timeline event:", error);
     throw error;
@@ -229,9 +230,9 @@ export const subscribeToProjectTasks = (projectId: string, callback: (tasks: Tas
 
 // ============ MEETINGS COLLECTION ============
 
-export const createMeeting = async (projectId: string, meeting: Omit<Meeting, 'id'>): Promise<string> => {
+export const createMeeting = async (projectId: string, meeting: Omit<Meeting, 'id'>, parentCollection: string = "projects"): Promise<string> => {
   try {
-    const meetingsRef = collection(db, "projects", projectId, "meetings");
+    const meetingsRef = collection(db, parentCollection, projectId, "meetings");
     const newDocRef = doc(meetingsRef);
     // Remove undefined values before sending to Firebase
     const cleanedMeeting = Object.fromEntries(
@@ -249,13 +250,13 @@ export const createMeeting = async (projectId: string, meeting: Omit<Meeting, 'i
   }
 };
 
-export const updateMeeting = async (projectId: string, meetingId: string, updates: Partial<Meeting>): Promise<void> => {
+export const updateMeeting = async (projectId: string, meetingId: string, updates: Partial<Meeting>, parentCollection: string = "projects"): Promise<void> => {
   try {
     // Remove undefined values before sending to Firebase
     const cleanedUpdates = Object.fromEntries(
       Object.entries({ ...updates }).filter(([_, v]) => v !== undefined)
     );
-    await updateDoc(doc(db, "projects", projectId, "meetings", meetingId), {
+    await updateDoc(doc(db, parentCollection, projectId, "meetings", meetingId), {
       ...cleanedUpdates,
       updatedAt: new Date()
     });
@@ -265,18 +266,18 @@ export const updateMeeting = async (projectId: string, meetingId: string, update
   }
 };
 
-export const deleteMeeting = async (projectId: string, meetingId: string): Promise<void> => {
+export const deleteMeeting = async (projectId: string, meetingId: string, parentCollection: string = "projects"): Promise<void> => {
   try {
-    await deleteDoc(doc(db, "projects", projectId, "meetings", meetingId));
+    await deleteDoc(doc(db, parentCollection, projectId, "meetings", meetingId));
   } catch (error) {
     console.error("Error deleting meeting:", error);
     throw error;
   }
 };
 
-export const getProjectMeetings = async (projectId: string): Promise<Meeting[]> => {
+export const getProjectMeetings = async (projectId: string, parentCollection: string = "projects"): Promise<Meeting[]> => {
   try {
-    const snapshot = await getDocs(collection(db, "projects", projectId, "meetings"));
+    const snapshot = await getDocs(collection(db, parentCollection, projectId, "meetings"));
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Meeting));
   } catch (error) {
     console.error("Error fetching meetings:", error);
@@ -305,10 +306,11 @@ export const subscribeToProjectMeetings = (projectId: string, callback: (meeting
 export const addCommentToMeeting = async (
   projectId: string,
   meetingId: string,
-  comment: Omit<Comment, 'id'>
+  comment: Omit<Comment, 'id'>,
+  parentCollection: string = "projects"
 ): Promise<string> => {
   try {
-    const commentsRef = collection(db, "projects", projectId, "meetings", meetingId, "comments");
+    const commentsRef = collection(db, parentCollection, projectId, "meetings", meetingId, "comments");
     const newCommentRef = doc(commentsRef);
     // Remove undefined values before sending to Firebase
     const cleanedComment = Object.fromEntries(
@@ -328,19 +330,20 @@ export const addCommentToMeeting = async (
 export const deleteCommentFromMeeting = async (
   projectId: string,
   meetingId: string,
-  commentId: string
+  commentId: string,
+  parentCollection: string = "projects"
 ): Promise<void> => {
   try {
-    await deleteDoc(doc(db, "projects", projectId, "meetings", meetingId, "comments", commentId));
+    await deleteDoc(doc(db, parentCollection, projectId, "meetings", meetingId, "comments", commentId));
   } catch (error) {
     console.error("Error deleting meeting comment:", error);
     throw error;
   }
 };
 
-export const getMeetingComments = async (projectId: string, meetingId: string): Promise<Comment[]> => {
+export const getMeetingComments = async (projectId: string, meetingId: string, parentCollection: string = "projects"): Promise<Comment[]> => {
   try {
-    const commentsRef = collection(db, "projects", projectId, "meetings", meetingId, "comments");
+    const commentsRef = collection(db, parentCollection, projectId, "meetings", meetingId, "comments");
     const snapshot = await getDocs(commentsRef);
     const comments = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Comment));
     return comments;
@@ -353,9 +356,10 @@ export const getMeetingComments = async (projectId: string, meetingId: string): 
 export const subscribeToMeetingComments = (
   projectId: string,
   meetingId: string,
-  callback: (comments: Comment[]) => void
+  callback: (comments: Comment[]) => void,
+  parentCollection: string = "projects"
 ): Unsubscribe => {
-  return onSnapshot(collection(db, "projects", projectId, "meetings", meetingId, "comments"), (snapshot) => {
+  return onSnapshot(collection(db, parentCollection, projectId, "meetings", meetingId, "comments"), (snapshot) => {
     const comments = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Comment));
     callback(comments);
   });
@@ -363,9 +367,9 @@ export const subscribeToMeetingComments = (
 
 // ============ DOCUMENTS COLLECTION ============
 
-export const createDocument = async (projectId: string, document: Omit<ProjectDocument, 'id'>): Promise<string> => {
+export const createDocument = async (projectId: string, document: Omit<ProjectDocument, 'id'>, parentCollection: string = "projects"): Promise<string> => {
   try {
-    const docsRef = collection(db, "projects", projectId, "documents");
+    const docsRef = collection(db, parentCollection, projectId, "documents");
     const newDocRef = doc(docsRef);
     // Remove undefined values before sending to Firebase
     const cleanedDoc = Object.fromEntries(
@@ -383,13 +387,13 @@ export const createDocument = async (projectId: string, document: Omit<ProjectDo
   }
 };
 
-export const updateDocument = async (projectId: string, docId: string, updates: Partial<ProjectDocument>): Promise<void> => {
+export const updateDocument = async (projectId: string, docId: string, updates: Partial<ProjectDocument>, parentCollection: string = "projects"): Promise<void> => {
   try {
     // Remove undefined values before sending to Firebase
     const cleanedUpdates = Object.fromEntries(
       Object.entries({ ...updates }).filter(([_, v]) => v !== undefined)
     );
-    await updateDoc(doc(db, "projects", projectId, "documents", docId), {
+    await updateDoc(doc(db, parentCollection, projectId, "documents", docId), {
       ...cleanedUpdates,
       updatedAt: new Date()
     });
@@ -399,18 +403,18 @@ export const updateDocument = async (projectId: string, docId: string, updates: 
   }
 };
 
-export const deleteDocument = async (projectId: string, docId: string): Promise<void> => {
+export const deleteDocument = async (projectId: string, docId: string, parentCollection: string = "projects"): Promise<void> => {
   try {
-    await deleteDoc(doc(db, "projects", projectId, "documents", docId));
+    await deleteDoc(doc(db, parentCollection, projectId, "documents", docId));
   } catch (error) {
     console.error("Error deleting document:", error);
     throw error;
   }
 };
 
-export const getProjectDocuments = async (projectId: string): Promise<ProjectDocument[]> => {
+export const getProjectDocuments = async (projectId: string, parentCollection: string = "projects"): Promise<ProjectDocument[]> => {
   try {
-    const snapshot = await getDocs(collection(db, "projects", projectId, "documents"));
+    const snapshot = await getDocs(collection(db, parentCollection, projectId, "documents"));
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProjectDocument));
   } catch (error) {
     console.error("Error fetching documents:", error);
@@ -470,10 +474,11 @@ export const subscribeToProjectDocuments = (projectId: string, callback: (docume
 export const addCommentToDocument = async (
   projectId: string,
   documentId: string,
-  comment: Omit<Comment, 'id'>
+  comment: Omit<Comment, 'id'>,
+  parentCollection: string = "projects"
 ): Promise<string> => {
   try {
-    const documentRef = doc(db, "projects", projectId, "documents", documentId);
+    const documentRef = doc(db, parentCollection, projectId, "documents", documentId);
     
     // Remove undefined values before sending to Firebase
     const cleanedComment = Object.fromEntries(
@@ -508,17 +513,18 @@ export const deleteCommentFromDocument = async (
   projectId: string,
   documentId: string,
   commentId: string,
-  comment?: Comment
+  comment?: Comment,
+  parentCollection: string = "projects"
 ): Promise<void> => {
   try {
     // 1. Delete from subcollection
-    await deleteDoc(doc(db, "projects", projectId, "documents", documentId, "comments", commentId));
+    await deleteDoc(doc(db, parentCollection, projectId, "documents", documentId, "comments", commentId));
     
     // 2. ALSO remove from document's comments array field
     // If comment object is provided, use it; otherwise, create a minimal one
     const commentToRemove = comment || { id: commentId, userId: '', text: '', timestamp: '' };
     
-    const documentRef = doc(db, "projects", projectId, "documents", documentId);
+    const documentRef = doc(db, parentCollection, projectId, "documents", documentId);
     await updateDoc(documentRef, {
       comments: arrayRemove(commentToRemove)
     });
@@ -528,9 +534,9 @@ export const deleteCommentFromDocument = async (
   }
 };
 
-export const getDocumentComments = async (projectId: string, documentId: string): Promise<Comment[]> => {
+export const getDocumentComments = async (projectId: string, documentId: string, parentCollection: string = "projects"): Promise<Comment[]> => {
   try {
-    const snapshot = await getDocs(collection(db, "projects", projectId, "documents", documentId, "comments"));
+    const snapshot = await getDocs(collection(db, parentCollection, projectId, "documents", documentId, "comments"));
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Comment));
   } catch (error) {
     console.error("Error fetching comments:", error);
@@ -541,9 +547,10 @@ export const getDocumentComments = async (projectId: string, documentId: string)
 export const subscribeToDocumentComments = (
   projectId: string,
   documentId: string,
-  callback: (comments: Comment[]) => void
+  callback: (comments: Comment[]) => void,
+  parentCollection: string = "projects"
 ): Unsubscribe => {
-  return onSnapshot(collection(db, "projects", projectId, "documents", documentId, "comments"), (snapshot) => {
+  return onSnapshot(collection(db, parentCollection, projectId, "documents", documentId, "comments"), (snapshot) => {
     const comments = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Comment));
     callback(comments);
   });
@@ -551,9 +558,9 @@ export const subscribeToDocumentComments = (
 
 // ============ ACTIVITY LOGS COLLECTION ============
 
-export const addActivityLog = async (projectId: string, activity: any): Promise<void> => {
+export const addActivityLog = async (projectId: string, activity: any, parentCollection: string = "projects"): Promise<void> => {
   try {
-    const logsRef = collection(db, "projects", projectId, "activityLogs");
+    const logsRef = collection(db, parentCollection, projectId, "activityLogs");
     // Remove undefined values before sending to Firebase
     const cleanedActivity = Object.fromEntries(
       Object.entries({ ...activity }).filter(([_, v]) => v !== undefined)
@@ -568,9 +575,9 @@ export const addActivityLog = async (projectId: string, activity: any): Promise<
   }
 };
 
-export const getProjectActivityLogs = async (projectId: string): Promise<any[]> => {
+export const getProjectActivityLogs = async (projectId: string, parentCollection: string = "projects"): Promise<any[]> => {
   try {
-    const snapshot = await getDocs(collection(db, "projects", projectId, "activityLogs"));
+    const snapshot = await getDocs(collection(db, parentCollection, projectId, "activityLogs"));
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
   } catch (error) {
     console.error("Error fetching activity logs:", error);
@@ -578,8 +585,8 @@ export const getProjectActivityLogs = async (projectId: string): Promise<any[]> 
   }
 };
 
-export const subscribeToActivityLogs = (projectId: string, callback: (logs: any[]) => void): Unsubscribe => {
-  return onSnapshot(collection(db, "projects", projectId, "activityLogs"), (snapshot) => {
+export const subscribeToActivityLogs = (projectId: string, callback: (logs: any[]) => void, parentCollection: string = "projects"): Unsubscribe => {
+  return onSnapshot(collection(db, parentCollection, projectId, "activityLogs"), (snapshot) => {
     const logs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
     callback(logs);
   });
@@ -641,9 +648,9 @@ export const removeTeamMember = async (projectId: string, userId: string): Promi
 
 // ============ TIMELINE COLLECTION ============
 
-export const createTimeline = async (projectId: string, timeline: Omit<Timeline, 'id'>): Promise<string> => {
+export const createTimeline = async (projectId: string, timeline: Omit<Timeline, 'id'>, parentCollection: string = "projects"): Promise<string> => {
   try {
-    const timelinesRef = collection(db, "projects", projectId, "timelines");
+    const timelinesRef = collection(db, parentCollection, projectId, "timelines");
     const newDocRef = doc(timelinesRef);
     // Remove undefined values before sending to Firebase
     const cleanedTimeline = Object.fromEntries(
@@ -661,13 +668,13 @@ export const createTimeline = async (projectId: string, timeline: Omit<Timeline,
   }
 };
 
-export const updateTimeline = async (projectId: string, timelineId: string, updates: Partial<Timeline>): Promise<void> => {
+export const updateTimeline = async (projectId: string, timelineId: string, updates: Partial<Timeline>, parentCollection: string = "projects"): Promise<void> => {
   try {
     // Remove undefined values before sending to Firebase
     const cleanedUpdates = Object.fromEntries(
       Object.entries({ ...updates }).filter(([_, v]) => v !== undefined)
     );
-    await updateDoc(doc(db, "projects", projectId, "timelines", timelineId), {
+    await updateDoc(doc(db, parentCollection, projectId, "timelines", timelineId), {
       ...cleanedUpdates,
       updatedAt: new Date()
     });
@@ -678,9 +685,9 @@ export const updateTimeline = async (projectId: string, timelineId: string, upda
   }
 };
 
-export const deleteTimeline = async (projectId: string, timelineId: string): Promise<void> => {
+export const deleteTimeline = async (projectId: string, timelineId: string, parentCollection: string = "projects"): Promise<void> => {
   try {
-    await deleteDoc(doc(db, "projects", projectId, "timelines", timelineId));
+    await deleteDoc(doc(db, parentCollection, projectId, "timelines", timelineId));
     if (process.env.NODE_ENV !== 'production') console.log(`✅ Timeline deleted: ${timelineId}`);
   } catch (error) {
     console.error("Error deleting timeline:", error);
@@ -688,9 +695,9 @@ export const deleteTimeline = async (projectId: string, timelineId: string): Pro
   }
 };
 
-export const getTimelines = async (projectId: string): Promise<Timeline[]> => {
+export const getTimelines = async (projectId: string, parentCollection: string = "projects"): Promise<Timeline[]> => {
   try {
-    const timelinesRef = collection(db, "projects", projectId, "timelines");
+    const timelinesRef = collection(db, parentCollection, projectId, "timelines");
     const snapshot = await getDocs(timelinesRef);
     const timelines = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Timeline));
     if (process.env.NODE_ENV !== 'production') console.log(`✅ Fetched ${timelines.length} timelines for project ${projectId}`);
@@ -725,9 +732,9 @@ export const subscribeToTimelines = (projectId: string, callback: (timelines: Ti
 
 // ============ TASK CHECKLISTS (SUBTASKS) SUBCOLLECTION ============
 
-export const addChecklistItem = async (projectId: string, taskId: string, checklist: Omit<SubTask, 'id'>): Promise<string> => {
+export const addChecklistItem = async (projectId: string, taskId: string, checklist: Omit<SubTask, 'id'>, parentCollection: string = "projects"): Promise<string> => {
   try {
-    const checklistRef = collection(db, "projects", projectId, "tasks", taskId, "checklists");
+    const checklistRef = collection(db, parentCollection, projectId, "tasks", taskId, "checklists");
     const newChecklistRef = doc(checklistRef);
     // Remove undefined values before sending to Firebase
     const cleanedChecklist = Object.fromEntries(
@@ -745,13 +752,13 @@ export const addChecklistItem = async (projectId: string, taskId: string, checkl
   }
 };
 
-export const updateChecklistItem = async (projectId: string, taskId: string, checklistId: string, updates: Partial<SubTask>): Promise<void> => {
+export const updateChecklistItem = async (projectId: string, taskId: string, checklistId: string, updates: Partial<SubTask>, parentCollection: string = "projects"): Promise<void> => {
   try {
     // Remove undefined values before sending to Firebase
     const cleanedUpdates = Object.fromEntries(
       Object.entries({ ...updates }).filter(([_, v]) => v !== undefined)
     );
-    await updateDoc(doc(db, "projects", projectId, "tasks", taskId, "checklists", checklistId), {
+    await updateDoc(doc(db, parentCollection, projectId, "tasks", taskId, "checklists", checklistId), {
       ...cleanedUpdates,
       updatedAt: new Date()
     });
@@ -762,9 +769,9 @@ export const updateChecklistItem = async (projectId: string, taskId: string, che
   }
 };
 
-export const deleteChecklistItem = async (projectId: string, taskId: string, checklistId: string): Promise<void> => {
+export const deleteChecklistItem = async (projectId: string, taskId: string, checklistId: string, parentCollection: string = "projects"): Promise<void> => {
   try {
-    await deleteDoc(doc(db, "projects", projectId, "tasks", taskId, "checklists", checklistId));
+    await deleteDoc(doc(db, parentCollection, projectId, "tasks", taskId, "checklists", checklistId));
     if (process.env.NODE_ENV !== 'production') console.log(`✅ Checklist item deleted`);
   } catch (error) {
     console.error("Error deleting checklist item:", error);
@@ -772,9 +779,9 @@ export const deleteChecklistItem = async (projectId: string, taskId: string, che
   }
 };
 
-export const getTaskChecklists = async (projectId: string, taskId: string): Promise<SubTask[]> => {
+export const getTaskChecklists = async (projectId: string, taskId: string, parentCollection: string = "projects"): Promise<SubTask[]> => {
   try {
-    const checklistRef = collection(db, "projects", projectId, "tasks", taskId, "checklists");
+    const checklistRef = collection(db, parentCollection, projectId, "tasks", taskId, "checklists");
     const snapshot = await getDocs(checklistRef);
     const checklists = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SubTask));
     return checklists;
@@ -784,8 +791,8 @@ export const getTaskChecklists = async (projectId: string, taskId: string): Prom
   }
 };
 
-export const subscribeToTaskChecklists = (projectId: string, taskId: string, callback: (checklists: SubTask[]) => void): Unsubscribe => {
-  return onSnapshot(collection(db, "projects", projectId, "tasks", taskId, "checklists"), (snapshot) => {
+export const subscribeToTaskChecklists = (projectId: string, taskId: string, callback: (checklists: SubTask[]) => void, parentCollection: string = "projects"): Unsubscribe => {
+  return onSnapshot(collection(db, parentCollection, projectId, "tasks", taskId, "checklists"), (snapshot) => {
     const checklists = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SubTask));
     if (process.env.NODE_ENV !== 'production') console.log(`📥 Checklists updated for task ${taskId}: ${checklists.length} items`);
     callback(checklists);
@@ -794,9 +801,9 @@ export const subscribeToTaskChecklists = (projectId: string, taskId: string, cal
 
 // ============ TASK COMMENTS SUBCOLLECTION ============
 
-export const addCommentToTask = async (projectId: string, taskId: string, comment: Omit<Comment, 'id'>): Promise<string> => {
+export const addCommentToTask = async (projectId: string, taskId: string, comment: Omit<Comment, 'id'>, parentCollection: string = "projects"): Promise<string> => {
   try {
-    const commentsRef = collection(db, "projects", projectId, "tasks", taskId, "comments");
+    const commentsRef = collection(db, parentCollection, projectId, "tasks", taskId, "comments");
     const newCommentRef = doc(commentsRef);
     // Remove undefined values before sending to Firebase
     const cleanedComment = Object.fromEntries(
@@ -814,9 +821,9 @@ export const addCommentToTask = async (projectId: string, taskId: string, commen
   }
 };
 
-export const deleteCommentFromTask = async (projectId: string, taskId: string, commentId: string): Promise<void> => {
+export const deleteCommentFromTask = async (projectId: string, taskId: string, commentId: string, parentCollection: string = "projects"): Promise<void> => {
   try {
-    await deleteDoc(doc(db, "projects", projectId, "tasks", taskId, "comments", commentId));
+    await deleteDoc(doc(db, parentCollection, projectId, "tasks", taskId, "comments", commentId));
     if (process.env.NODE_ENV !== 'production') console.log(`✅ Comment deleted from task`);
   } catch (error) {
     console.error("Error deleting task comment:", error);
@@ -824,9 +831,9 @@ export const deleteCommentFromTask = async (projectId: string, taskId: string, c
   }
 };
 
-export const getTaskComments = async (projectId: string, taskId: string): Promise<Comment[]> => {
+export const getTaskComments = async (projectId: string, taskId: string, parentCollection: string = "projects"): Promise<Comment[]> => {
   try {
-    const commentsRef = collection(db, "projects", projectId, "tasks", taskId, "comments");
+    const commentsRef = collection(db, parentCollection, projectId, "tasks", taskId, "comments");
     const snapshot = await getDocs(commentsRef);
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Comment));
   } catch (error) {
@@ -835,8 +842,8 @@ export const getTaskComments = async (projectId: string, taskId: string): Promis
   }
 };
 
-export const subscribeToTaskComments = (projectId: string, taskId: string, callback: (comments: Comment[]) => void): Unsubscribe => {
-  return onSnapshot(collection(db, "projects", projectId, "tasks", taskId, "comments"), (snapshot) => {
+export const subscribeToTaskComments = (projectId: string, taskId: string, callback: (comments: Comment[]) => void, parentCollection: string = "projects"): Unsubscribe => {
+  return onSnapshot(collection(db, parentCollection, projectId, "tasks", taskId, "comments"), (snapshot) => {
     const comments = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Comment));
     if (process.env.NODE_ENV !== 'production') console.log(`📥 Comments updated for task ${taskId}: ${comments.length} comments`);
     callback(comments);
@@ -845,9 +852,9 @@ export const subscribeToTaskComments = (projectId: string, taskId: string, callb
 
 // ============ TASK APPROVALS SUBCOLLECTION ============
 
-export const updateTaskApproval = async (projectId: string, taskId: string, stage: 'start' | 'completion', approval: any): Promise<void> => {
+export const updateTaskApproval = async (projectId: string, taskId: string, stage: 'start' | 'completion', approval: any, parentCollection: string = "projects"): Promise<void> => {
   try {
-    const approvalsRef = doc(db, "projects", projectId, "tasks", taskId, "approvals", stage);
+    const approvalsRef = doc(db, parentCollection, projectId, "tasks", taskId, "approvals", stage);
     await setDoc(approvalsRef, {
       ...approval,
       updatedAt: new Date()
@@ -859,9 +866,9 @@ export const updateTaskApproval = async (projectId: string, taskId: string, stag
   }
 };
 
-export const getTaskApprovals = async (projectId: string, taskId: string): Promise<any> => {
+export const getTaskApprovals = async (projectId: string, taskId: string, parentCollection: string = "projects"): Promise<any> => {
   try {
-    const approvalsRef = collection(db, "projects", projectId, "tasks", taskId, "approvals");
+    const approvalsRef = collection(db, parentCollection, projectId, "tasks", taskId, "approvals");
     const snapshot = await getDocs(approvalsRef);
     const approvals: any = {};
     snapshot.docs.forEach(doc => {
@@ -874,8 +881,8 @@ export const getTaskApprovals = async (projectId: string, taskId: string): Promi
   }
 };
 
-export const subscribeToTaskApprovals = (projectId: string, taskId: string, callback: (approvals: any) => void): Unsubscribe => {
-  return onSnapshot(collection(db, "projects", projectId, "tasks", taskId, "approvals"), (snapshot) => {
+export const subscribeToTaskApprovals = (projectId: string, taskId: string, callback: (approvals: any) => void, parentCollection: string = "projects"): Unsubscribe => {
+  return onSnapshot(collection(db, parentCollection, projectId, "tasks", taskId, "approvals"), (snapshot) => {
     const approvals: any = {};
     snapshot.docs.forEach(doc => {
       approvals[doc.id] = { ...doc.data(), id: doc.id };

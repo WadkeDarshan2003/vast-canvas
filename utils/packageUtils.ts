@@ -2,6 +2,7 @@ import { Project, Plan, ProjectPackage } from '../types';
 
 type PackageVisual = {
   shortLabel: string;
+  planName: string;
   creativesPerYear: number;
   badgeClass: string;
   tileClass: string;
@@ -25,8 +26,9 @@ export interface PackageCreativeSummary {
 }
 
 export const PACKAGE_VISUALS: Record<ProjectPackage, PackageVisual> = {
-  [ProjectPackage.PACKAGE_50]: {
+  [ProjectPackage.PACKAGE_20]: {
     shortLabel: '20 Creatives',
+    planName: 'Starter Plan',
     creativesPerYear: 20,
     badgeClass: 'bg-emerald-500/90 text-white border-white/45',
     tileClass: 'bg-emerald-50 border-emerald-200',
@@ -34,8 +36,9 @@ export const PACKAGE_VISUALS: Record<ProjectPackage, PackageVisual> = {
     valueClass: 'text-emerald-900',
     subTextClass: 'text-emerald-700',
   },
-  [ProjectPackage.PACKAGE_100]: {
+  [ProjectPackage.PACKAGE_50]: {
     shortLabel: '50 Creatives',
+    planName: 'Growth Plan',
     creativesPerYear: 50,
     badgeClass: 'bg-sky-500/90 text-white border-white/45',
     tileClass: 'bg-sky-50 border-sky-200',
@@ -43,8 +46,9 @@ export const PACKAGE_VISUALS: Record<ProjectPackage, PackageVisual> = {
     valueClass: 'text-sky-900',
     subTextClass: 'text-sky-700',
   },
-  [ProjectPackage.PACKAGE_200]: {
+  [ProjectPackage.PACKAGE_100]: {
     shortLabel: '100 Creatives',
+    planName: 'Business Plan',
     creativesPerYear: 100,
     badgeClass: 'bg-amber-400/95 text-slate-900 border-amber-100/80',
     tileClass: 'bg-amber-50 border-amber-200',
@@ -54,7 +58,8 @@ export const PACKAGE_VISUALS: Record<ProjectPackage, PackageVisual> = {
   },
   [ProjectPackage.IMPACT]: {
     shortLabel: 'Impact Plan',
-    creativesPerYear: 200, // IMPACT premium quota
+    planName: 'Impact Plan',
+    creativesPerYear: 200,
     badgeClass: 'bg-indigo-900 text-white border-white/35',
     tileClass: 'bg-indigo-50 border-indigo-200',
     titleClass: 'text-indigo-700',

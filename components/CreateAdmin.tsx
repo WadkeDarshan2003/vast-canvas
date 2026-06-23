@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { createUserInFirebase, updateUserInFirebase } from '../services/userManagementService';
 import { initializeDefaultPackages } from '../services/packageService';
-import { migrateAllDemoData } from '../services/templateService';
 import { Role, User } from '../types';
 import { Mail, Phone, ArrowRight, User as UserIcon, Lock, ShieldCheck, Zap, LayoutDashboard, CheckCircle2, Camera } from 'lucide-react';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -13,6 +12,8 @@ import { getUser, createUser } from '../services/firebaseService';
 import { loginWithGoogle } from '../services/authService';
 import { getFirebaseErrorMessage } from '../utils/firebaseErrorMessages';
 import { createDeviceInfo, saveDeviceToLocal } from '../utils/deviceUtils';
+import { sendUserWelcomeEmail } from '../services/emailTriggerService';
+
 
 const CreateAdmin: React.FC = () => {
   const { user: currentUser, adminCredentials, login } = useAuth();
@@ -64,7 +65,7 @@ const CreateAdmin: React.FC = () => {
       const userToCreate: User = {
         id: '',
         name,
-        email: authMethod === 'email' ? email : '',
+        email: email || '',
         role: Role.ADMIN,
         phone: phone || undefined,
         password: generatedPassword,
@@ -83,12 +84,24 @@ const CreateAdmin: React.FC = () => {
       // Create user
       const uid = await createUserInFirebase(userToCreate, currentUser?.email, adminCredentials?.password);
 
+      // Trigger welcome email with credentials
+      if (userToCreate.email) {
+        try {
+          await sendUserWelcomeEmail({
+            ...userToCreate,
+            id: uid
+          }, generatedPassword);
+        } catch (emailErr) {
+          console.warn('Error sending admin welcome credentials email:', emailErr);
+        }
+      }
+
       // Fetch the created user to get the auto-generated tenantId
       const createdUser = await getUser(uid);
       const assignedTenantId = createdUser?.tenantId || uid;
 
       // Initialize system databases (like packages) scoped to this admin's workspace
-      await migrateAllDemoData(assignedTenantId); // This handles both packages and templates
+      await initializeDefaultPackages(assignedTenantId);
 
       // Success notification with enhanced message
       addNotification(
@@ -140,7 +153,7 @@ const CreateAdmin: React.FC = () => {
         };
         try {
           await createUser(userProfile);
-          await migrateAllDemoData(authResult.uid); // Initialize demo data scoped to this admin's workspace
+          await initializeDefaultPackages(authResult.uid); // Initialize system databases scoped to this admin's workspace
           addNotification('Admin Account Created', 'Your admin account has been created successfully.', 'success');
         } catch (createError) {
           console.error('Error creating admin profile:', createError);
@@ -301,7 +314,7 @@ const CreateAdmin: React.FC = () => {
                   }`}
                 >
                   <Mail className="w-3.5 h-3.5" />
-                  Email OTP
+                  Email & Password
                 </button>
                 <button
                   type="button"

@@ -140,12 +140,26 @@ export const sendProjectWelcomeEmail = async (
 
       <p style="margin-top: 30px; color: #666; font-size: 14px;">
         Regards,<br>
-        <strong>ID ERP System</strong>
+        <strong>Vast Canvas Connect</strong>
       </p>
     </div>
   `;
 
   try {
+    // Send welcome email
+    const result = await sendEmail({
+      to: user.email,
+      recipientName: user.name,
+      subject: `Welcome to Project: ${projectName}`,
+      htmlContent,
+    });
+    
+    if (result.success) {
+      if (process.env.NODE_ENV !== 'production') console.log(`✅ Project welcome email sent to ${user.name}`);
+    } else {
+      console.error(`❌ Failed to send project welcome email:`, result.error);
+    }
+
     // Send push notification
     await sendPushNotification(
       user.id,
@@ -156,6 +170,75 @@ export const sendProjectWelcomeEmail = async (
     if (process.env.NODE_ENV !== 'production') console.log(`✅ Project welcome push sent to ${user.name}`);
   } catch (error) {
     console.error(`❌ Error sending project welcome notification:`, error);
+  }
+};
+
+/**
+ * Send welcome email with login credentials to newly created user
+ */
+export const sendUserWelcomeEmail = async (
+  user: User,
+  temporaryPassword?: string
+): Promise<void> => {
+  if (!user.email) {
+    console.warn(`⚠️ No email for user ${user.name}, cannot send credentials`);
+    return;
+  }
+
+  const appBaseUrl = getAppBaseUrl();
+  const passwordText = temporaryPassword || user.password || (user.phone ? user.phone.replace(/\D/g, '').slice(-6) : 'admin123');
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6;">
+      <div style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); padding: 30px; border-radius: 8px 8px 0 0; text-align: center;">
+        <h2 style="color: #fff; margin: 0; font-size: 24px;">👋 Welcome to Vast Canvas Connect</h2>
+      </div>
+      
+      <div style="background-color: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+        <p style="font-size: 16px; margin-top: 0;">Hi <strong>${user.name}</strong>,</p>
+        
+        <p>Your account has been created successfully in the **Vast Canvas Connect** system as a **${user.role}**.</p>
+        
+        <div style="background-color: #f0f9ff; border-left: 4px solid #0284c7; padding: 20px; margin: 25px 0; border-radius: 4px;">
+          <h3 style="margin-top: 0; color: #0369a1; font-size: 16px;">🔑 Your Login Credentials</h3>
+          <p style="margin: 8px 0; font-size: 14px;"><strong>Login URL:</strong> <a href="${appBaseUrl}" style="color: #0284c7; text-decoration: underline;">${appBaseUrl}</a></p>
+          <p style="margin: 8px 0; font-size: 14px;"><strong>Email ID:</strong> ${user.email}</p>
+          ${user.authMethod === 'phone' ? '' : `<p style="margin: 8px 0; font-size: 14px;"><strong>Password:</strong> ${passwordText}</p>`}
+        </div>
+        
+        <p style="font-size: 14px; color: #4b5563;">
+          Please log in to update your profile details and access your dashboard. We recommend changing your password after your first login.
+        </p>
+        
+        <div style="margin: 30px 0; text-align: center;">
+          <a href="${appBaseUrl}" style="display: inline-block; background-color: #0284c7; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 15px;">
+            Access Dashboard
+          </a>
+        </div>
+        
+        <p style="margin-top: 30px; color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb; padding-top: 20px; text-align: center;">
+          Regards,<br>
+          <strong>Vast Canvas Connect</strong>
+        </p>
+      </div>
+    </div>
+  `;
+
+  try {
+    const result = await sendEmail({
+      to: user.email,
+      recipientName: user.name,
+      subject: `Welcome to Vast Canvas Connect - Your Account Credentials`,
+      htmlContent,
+    });
+
+    if (result.success) {
+      if (process.env.NODE_ENV !== 'production') console.log(`✅ Welcome credentials email sent to ${user.name}`);
+    } else {
+      console.error(`❌ Failed to send welcome credentials email:`, result.error);
+    }
+  } catch (error) {
+    console.error(`❌ Error sending welcome credentials email:`, error);
   }
 };
 

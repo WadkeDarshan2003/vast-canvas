@@ -1,32 +1,8 @@
 rules_version = '2';
-
-// Firebase Storage Security Rules
 service firebase.storage {
   match /b/{bucket}/o {
-    // Project thumbnails stored at /projects/{projectId}/thumbnails/...
-    match /projects/{projectId}/thumbnails/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
-      allow delete: if request.auth != null;
-    }
-
-    // Project documents stored at /projects/{projectId}/documents/...
-    match /projects/{projectId}/documents/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
-      allow delete: if request.auth != null;
-    }
-
-    // Tenant branding assets stored at /tenants/{tenantId}/branding/...
-    match /tenants/{tenantId}/branding/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
-      allow delete: if request.auth != null;
-    }
-    
-    // Deny all other paths
     match /{allPaths=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
   }
 }

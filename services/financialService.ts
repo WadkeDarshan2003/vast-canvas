@@ -14,9 +14,9 @@ import { FinancialRecord } from "../types";
 // ============ PROJECT FINANCIAL RECORDS - SUBCOLLECTION ONLY ============
 
 // Create financial record in project subcollection
-export const createProjectFinancialRecord = async (projectId: string, record: Omit<FinancialRecord, 'id'>): Promise<string> => {
+export const createProjectFinancialRecord = async (projectId: string, record: Omit<FinancialRecord, 'id'>, parentCollection: string = "projects"): Promise<string> => {
   try {
-    const recordsRef = collection(db, "projects", projectId, "finances");
+    const recordsRef = collection(db, parentCollection, projectId, "finances");
     const newRecordRef = doc(recordsRef);
     // Remove undefined values before sending to Firebase
     const cleanedRecord = Object.fromEntries(
@@ -36,13 +36,13 @@ export const createProjectFinancialRecord = async (projectId: string, record: Om
 };
 
 // Update financial record in project subcollection
-export const updateProjectFinancialRecord = async (projectId: string, recordId: string, updates: Partial<FinancialRecord>): Promise<void> => {
+export const updateProjectFinancialRecord = async (projectId: string, recordId: string, updates: Partial<FinancialRecord>, parentCollection: string = "projects"): Promise<void> => {
   try {
     // Remove undefined values before sending to Firebase
     const cleanedUpdates = Object.fromEntries(
       Object.entries({ ...updates }).filter(([_, v]) => v !== undefined)
     );
-    await updateDoc(doc(db, "projects", projectId, "finances", recordId), {
+    await updateDoc(doc(db, parentCollection, projectId, "finances", recordId), {
       ...cleanedUpdates,
       updatedAt: new Date()
     });
@@ -54,9 +54,9 @@ export const updateProjectFinancialRecord = async (projectId: string, recordId: 
 };
 
 // Delete financial record from project subcollection
-export const deleteProjectFinancialRecord = async (projectId: string, recordId: string): Promise<void> => {
+export const deleteProjectFinancialRecord = async (projectId: string, recordId: string, parentCollection: string = "projects"): Promise<void> => {
   try {
-    await deleteDoc(doc(db, "projects", projectId, "finances", recordId));
+    await deleteDoc(doc(db, parentCollection, projectId, "finances", recordId));
     if (process.env.NODE_ENV !== 'production') console.log(`✅ Financial record deleted for project ${projectId}`);
   } catch (error) {
     console.error("Error deleting financial record:", error);
@@ -65,9 +65,9 @@ export const deleteProjectFinancialRecord = async (projectId: string, recordId: 
 };
 
 // Get financial records from project subcollection
-export const getProjectFinancialRecords = async (projectId: string): Promise<FinancialRecord[]> => {
+export const getProjectFinancialRecords = async (projectId: string, parentCollection: string = "projects"): Promise<FinancialRecord[]> => {
   try {
-    const recordsRef = collection(db, "projects", projectId, "finances");
+    const recordsRef = collection(db, parentCollection, projectId, "finances");
     const snapshot = await getDocs(recordsRef);
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as FinancialRecord));
   } catch (error) {

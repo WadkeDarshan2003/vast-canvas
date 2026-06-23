@@ -100,8 +100,8 @@ export const updateTenantBranding = async (
  */
 export const getTenantsByAdmin = async (adminId: string): Promise<Array<{ id: string; name: string }>> => {
   try {
-    // Query 1: Tenants where user is the owner (adminUid)
-    const ownerQuery = query(collection(db, 'tenants'), where('adminUid', '==', adminId));
+    // Query 1: Tenants where user is the owner (ownerId)
+    const ownerQuery = query(collection(db, 'tenants'), where('ownerId', '==', adminId));
     const ownerSnapshot = await getDocs(ownerQuery);
     
     // Query 2: Tenants where user is in the adminIds array (co-admin)

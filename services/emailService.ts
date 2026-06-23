@@ -30,8 +30,98 @@ export interface EmailOptions {
  */
 
 export const sendEmail = async (options: EmailOptions): Promise<{ success: boolean; error?: string; messageId?: string }> => {
-  if (process.env.NODE_ENV !== 'production') console.log(`[Mock Email] To: ${options.to}, Subject: ${options.subject}`);
-  return { success: true, messageId: 'mock-id' };
+  if (!options.to || !options.subject || !options.htmlContent) {
+    return { success: false, error: 'Missing required email fields' };
+  }
+
+  const brevoApiKey = import.meta.env.VITE_BREVO_API_KEY;
+  const brevoSenderEmail = import.meta.env.VITE_BREVO_SENDER_EMAIL || 'hrishikesh@vastcanvas.in';
+
+  if (brevoApiKey && brevoApiKey !== 'your_brevo_api_key_here') {
+    // Send directly via Brevo SMTP API
+    try {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`✉️ Sending direct Brevo email to ${options.to}...`);
+      }
+      
+      const payload = {
+        sender: {
+          name: 'Vast Canvas Support',
+          email: brevoSenderEmail,
+        },
+        to: [
+          {
+            email: options.to,
+            name: options.recipientName || options.to.split('@')[0],
+          }
+        ],
+        subject: options.subject,
+        htmlContent: options.htmlContent,
+      };
+
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'api-key': brevoApiKey,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Brevo API error:', errorText);
+        return { success: false, error: `Brevo error: ${errorText}` };
+      }
+
+      const result = await response.json();
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ Email sent successfully via Brevo API:', result.messageId || 'success');
+      }
+      return { success: true, messageId: result.messageId };
+    } catch (error) {
+      console.error('❌ Error sending direct Brevo email:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  } else {
+    // Fall back to Cloud Function
+    try {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`✉️ Sending email to ${options.to} via Cloud Function...`);
+      }
+
+      const payload = {
+        to: options.to,
+        recipientName: options.recipientName || options.to.split('@')[0],
+        subject: options.subject,
+        htmlContent: options.htmlContent,
+      };
+
+      const response = await fetch(EMAIL_FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('❌ Cloud Function error:', error);
+        return { success: false, error: error.error || 'Failed to send email via Cloud Function' };
+      }
+
+      const result = await response.json();
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ Email sent successfully via Cloud Function:', result.messageId);
+      }
+      return { success: true, messageId: result.messageId };
+    } catch (error) {
+      console.error('❌ Error sending email via Cloud Function:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
 };
 
 

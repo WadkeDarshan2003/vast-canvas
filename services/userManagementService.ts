@@ -20,7 +20,7 @@ export const updateUserInFirebase = async (user: User): Promise<void> => {
       name: user.name,
       email: user.email,
       role: user.role,
-      phone: user.phone || '',
+      phone: (user.phone || '').replace(/\D/g, ''),
     };
 
     if (user.company) updateData.company = user.company;

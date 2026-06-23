@@ -11,7 +11,6 @@ import { getUser, claimPhoneUserProfile, createUser } from '../services/firebase
 import { setupPhoneAuthentication, verifyPhoneOTP, loginWithEmail, loginWithGoogle, assessRecaptchaEnterprise } from '../services/authService';
 import { getFirebaseErrorMessage } from '../utils/firebaseErrorMessages';
 import { createDeviceInfo, saveDeviceToLocal } from '../utils/deviceUtils';
-import { migrateAllDemoData } from '../services/templateService';
 import CreateAdmin from './CreateAdmin';
 
 interface LoginProps {
@@ -136,12 +135,26 @@ const Login: React.FC<LoginProps> = ({ users = [] }) => {
     setLoading(true);
     showLoading('Sending OTP...');
     try {
-      // Format phone number to E.164
-      let formattedPhone = phone.replace(/[\s\-()]/g, '');
-      if (!formattedPhone.startsWith('+')) {
-        // Default to +91 if no country code provided
-        formattedPhone = `+91${formattedPhone}`;
+      // Robust E.164 phone number formatting
+      const clean = phone.trim();
+      let formattedPhone = '';
+      
+      if (clean.startsWith('+')) {
+        let digits = clean.replace(/\D/g, '');
+        if (digits.startsWith('9191') && digits.length > 12) {
+          digits = digits.substring(2);
+        }
+        formattedPhone = '+' + digits;
+      } else {
+        const digits = clean.replace(/\D/g, '');
+        if (digits.startsWith('91') && digits.length > 10) {
+          formattedPhone = `+${digits}`;
+        } else {
+          formattedPhone = `+91${digits}`;
+        }
       }
+
+      console.log('📱 Formatting final phone number for Firebase:', formattedPhone);
 
       // IMPORTANT: Hide the loading overlay BEFORE calling setupPhoneAuthentication
       // so the reCAPTCHA challenge is visible to the user
@@ -154,10 +167,9 @@ const Login: React.FC<LoginProps> = ({ users = [] }) => {
       setError('');
     } catch (err: any) {
       console.error('Phone OTP error:', err);
-      let errorMessage = getFirebaseErrorMessage(err.code);
+      let errorMessage = err.code ? getFirebaseErrorMessage(err.code) : (err.message || 'An unexpected error occurred. Please try again.');
       // Special handling for too many attempts
       if (err.code === 'auth/too-many-requests') {
-        // Firebase does not provide remaining attempts, but we can show a lockout message
         errorMessage += ' You have reached the maximum number of attempts. Please wait a few minutes before trying again.';
       }
       setError(errorMessage);
@@ -210,7 +222,7 @@ const Login: React.FC<LoginProps> = ({ users = [] }) => {
       setError('');
     } catch (err: any) {
       console.error('OTP verification error:', err);
-      let errorMessage = getFirebaseErrorMessage(err.code);
+      let errorMessage = err.code ? getFirebaseErrorMessage(err.code) : (err.message || 'Verification failed. Please try again.');
       setError(errorMessage);
       addNotification('Verification Failed', errorMessage, 'error');
     } finally {
@@ -273,47 +285,6 @@ const Login: React.FC<LoginProps> = ({ users = [] }) => {
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-white mb-2">Sign In</h2>
             <p className="text-gray-400 text-sm mb-6">Welcome back! Please enter your details.</p>
-            
-            <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-white/10">
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginMethod('email');
-                  setOtpSent(false);
-                  setError('');
-                  setAttemptedSubmit(false);
-                  setPhone('+91 ');
-                  setOtp('');
-                }}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                  loginMethod === 'email'
-                    ? 'tab-active'
-                    : 'tab-inactive'
-                }`}
-              >
-                <Mail className="w-4 h-4" />
-                Email
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginMethod('phone');
-                  setOtpSent(false);
-                  setError('');
-                  setAttemptedSubmit(false);
-                  setEmail('');
-                  setPassword('');
-                }}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                  loginMethod === 'phone'
-                    ? 'tab-active'
-                    : 'tab-inactive'
-                }`}
-              >
-                <Phone className="w-4 h-4" />
-                Phone
-              </button>
-            </div>
           </div>
 
           {/* Email Login Form */}
@@ -372,94 +343,8 @@ const Login: React.FC<LoginProps> = ({ users = [] }) => {
                 {loading ? 'Processing...' : 'Sign In'} {!loading && <ArrowRight className="w-5 h-5" />}
               </button>
 
-
             </form>
           )}
-
-          {/* Phone Login Form */}
-          {loginMethod === 'phone' && (
-            <div className="animate-fade-in">
-              {!otpSent ? (
-                <form onSubmit={handleSendOTP} className="space-y-4 flex flex-col">
-                  {/* reCAPTCHA moved to top on mobile for visibility */}
-                  <div id="recaptcha-container" className="rounded-xl overflow-hidden shadow-lg border border-white/10 order-first"></div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">Phone Number</label>
-                    <input 
-                      type="tel" 
-                      autoComplete="tel"
-                      className={`w-full px-4 py-2.5 rounded-xl focus:outline-none transition-all glass-input ${attemptedSubmit && !phone ? 'border-red-500/50 ring-2 ring-red-500/20' : ''}`}
-                      placeholder="Enter your mobile number"
-                      value={phone}
-                      onChange={e => setPhone(e.target.value)}
-                      disabled={loading}
-                    />
-                    <p className="text-xs text-gray-500 mt-2">Enter your mobile number with country code</p>
-                  </div>
-                  {error && (
-                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
-                      {error}
-                    </div>
-                  )}
-                  <button 
-                    type="submit" 
-                    disabled={loading}
-                    className="w-full primary-button py-3 rounded-xl flex items-center justify-center gap-2 mt-6"
-                  >
-                    {loading ? 'Sending OTP...' : 'Get Security Code'} {!loading && <ArrowRight className="w-5 h-5" />}
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={handleVerifyOTP} className="space-y-6 text-center">
-                  <div className="flex flex-col items-center">
-                    <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-4 border border-blue-500/20">
-                      <Lock className="w-8 h-8 text-blue-400" />
-                    </div>
-                    <label className="block text-lg font-bold text-white mb-1">Verify Code</label>
-                    <p className="text-sm text-gray-400 mb-6">We've sent a 6-digit code to {phone}</p>
-                    
-                    <input 
-                      type="text" 
-                      className="w-full px-4 py-4 rounded-2xl focus:outline-none transition-all glass-input text-center text-2xl font-bold tracking-[0.5em] placeholder:tracking-normal placeholder:text-gray-600"
-                      placeholder="Code"
-                      value={otp}
-                      onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      disabled={loading}
-                      maxLength={6}
-                    />
-                  </div>
-                  
-                  {error && (
-                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
-                      {error}
-                    </div>
-                  )}
-                  
-                  <div className="space-y-3">
-                    <button 
-                      type="submit" 
-                      disabled={loading}
-                      className="w-full primary-button py-3 rounded-xl flex items-center justify-center gap-2"
-                    >
-                      {loading ? 'Verifying...' : 'Submit Code'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOtpSent(false);
-                        setOtp('');
-                        setError('');
-                      }}
-                      className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
-                    >
-                      Didn't receive the code? Resend
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          )}
-
           <div className="mt-6 pt-4 border-t border-white/10 text-center text-sm text-gray-400">
             Are you a Business Owner? {' '}
             <a href="?open=admins" className="text-blue-400 hover:text-blue-300 font-semibold underline underline-offset-4 decoration-blue-400/30">

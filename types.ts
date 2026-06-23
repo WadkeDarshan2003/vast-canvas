@@ -55,9 +55,9 @@ export enum ProjectCategory {
 }
 
 export enum ProjectPackage {
+  PACKAGE_20 = '20 Creatives p.a.',
   PACKAGE_50 = '50 Creatives p.a.',
   PACKAGE_100 = '100 Creatives p.a.',
-  PACKAGE_200 = '200 Creatives p.a.',
   IMPACT = 'Impact Plan' // Renamed from CUSTOM to make it a distinct firm plan
 }
 
@@ -284,6 +284,17 @@ export interface ProjectDocument {
   clientApprovedDate?: string;
 }
 
+export interface CreativeCard {
+  id: string;
+  title?: string;
+  description: string;
+  status: 'in-process' | 'delivered';
+  createdBy: string;
+  assigneeId?: string;
+  createdAt: string;
+  deliveredAt?: string;
+}
+
 // Plan: Package-based creative work with fixed creative quotas (50/100/200 Creatives p.a., Impact Plan)
 export interface Plan {
   id: string;
@@ -300,7 +311,7 @@ export interface Plan {
   team?: User[];
   packageType: ProjectPackage; // 50/100/200 Creatives p.a. or Impact Plan
   status: ProjectStatus;
-  
+
   startDate: string;
   deadline: string;
   budget: number;
@@ -309,12 +320,13 @@ export interface Plan {
   description: string;
   discountAmount?: number; // Optional discount applied to plan (absolute)
   discountPercent?: number; // Optional discount applied to plan (percent)
-  
+
   // Creative tracking for plans
   creativeUsed: number; // Number of creatives delivered/used
   meetings: Meeting[];
   activityLog: ActivityLog[];
   documents: ProjectDocument[];
+  creatives?: CreativeCard[];
 }
 
 // Project: Custom work items (print, packaging, logo design, etc.)
@@ -351,6 +363,8 @@ export interface Project {
   meetings: Meeting[];
   activityLog: ActivityLog[];
   documents: ProjectDocument[];
+  creatives?: CreativeCard[];
+  workCards?: CreativeCard[];
   designerChargePercentage?: number; // Design fee as percentage of project budget
   // Advanced Designer Scope Fields
   designerRequirements?: string; // Detailed project requirements and specifications

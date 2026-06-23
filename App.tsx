@@ -3,14 +3,11 @@ import {
   Palette, LogOut, Bell, X, Tag, Edit, Trash2, Building2, ChevronLeft, Clock, Layers, Settings
 } from 'lucide-react';
 import { FaPaintBrush, FaRegAddressCard, FaRegCompass, FaRegFolderOpen, FaUserShield } from 'react-icons/fa';
-import { MOCK_PROJECTS, MOCK_USERS } from './constants';
 import { Project, Plan, Role, User, ProjectStatus, ProjectType, ProjectCategory, Task } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
 import { LoadingProvider } from './contexts/LoadingContext';
-import { subscribeToProjects, subscribeToUserProjects, subscribeToUsers, subscribeToDesigners, subscribeToClients, seedDatabase, updateProject, deleteProject, subscribeToPlans, subscribeToUserPlans } from './services/firebaseService';
-import { seedDemoData } from './services/demoDataSeedingService';
-import { migrateAllDemoData } from './services/templateService';
+import { subscribeToProjects, subscribeToUserProjects, subscribeToUsers, subscribeToDesigners, subscribeToClients, updateProject, deleteProject, subscribeToPlans, subscribeToUserPlans, updatePlan, deletePlan } from './services/firebaseService';
 import { subscribeToProjectTasks } from './services/projectDetailsService';
 import { requestNotificationPermission, onMessageListener } from './services/pushNotificationService';
 import { AvatarCircle } from './utils/avatarUtils';
@@ -24,6 +21,8 @@ import PeopleList from './components/PeopleList';
 import Login from './components/Login';
 import NotificationPanel from './components/NotificationPanel';
 import NewProjectModal from './components/NewProjectModal';
+import NewPlanModal from './components/NewPlanModal';
+import ChangePlanModal from './components/ChangePlanModal';
 import Loader from './components/Loader';
 import RememberedDevices from './components/RememberedDevices';
 import SessionExpiryWarning from './components/SessionExpiryWarning';
@@ -78,147 +77,304 @@ const ProjectList = ({
     return type === ProjectType.DESIGN_SERVICE ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700';
   };
 
-  // Group projects by category
-  const groupedProjects = projects.reduce((acc, project) => {
-    const category = project.category;
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(project);
-    return acc;
-  }, {} as Record<ProjectCategory, Project[]>);
-
-  // (No per-category sorting on the Project page)
-
-  // Sort categories (Commercial first, then Residential)
-  const sortedCategories = Object.keys(groupedProjects).sort((a, b) => {
-    if (a === ProjectCategory.COMMERCIAL) return -1;
-    if (b === ProjectCategory.COMMERCIAL) return 1;
-    return 0;
-  });
-
   return (
     <div className="space-y-8 animate-fade-in projects-surface">
-      {sortedCategories.map(category => (
-        <div key={category}>
-          <div className="flex items-center gap-2 mb-4">
-            <Tag className="w-5 h-5 text-gray-600" />
-            <h2 className="text-lg font-bold text-gray-800">{category}</h2>
-            <span className="text-xs font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full mobile-increase">
-              {groupedProjects[category as ProjectCategory].length} projects
-            </span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {groupedProjects[category as ProjectCategory].map(project => (
-              <div
-                key={project.id}
-                onClick={() => onSelect(project)}
-                className="group relative cursor-pointer pt-2 pb-6 project-card"
-              >
-                {/* Main Architectural Image Container */}
-                <div className="h-56 w-full rounded-[2rem] overflow-hidden relative shadow-md will-change-transform project-card-media">
-                  {imageLoading[project.id] && (
-                    <div className="absolute inset-0 bg-slate-200 animate-pulse" />
-                  )}
-                  <img
-                    src={project.thumbnail}
-                    alt={project.name}
-                    className="w-full h-full object-cover"
-                    onLoad={() => setImageLoading(prev => ({ ...prev, [project.id]: false }))}
-                    onLoadStart={() => setImageLoading(prev => ({ ...prev, [project.id]: true }))}
-                  />
-                  <div className="absolute inset-0 bg-slate-900/10" />
-                  
-                  {/* Floating Badges inside Image */}
-                  <div className="absolute top-5 left-5 right-5 flex justify-between items-center z-10">
-                    <div className="flex gap-2 flex-wrap">
-                      <div className="backdrop-blur-xl bg-white/70 px-4 py-1.5 rounded-full text-[10px] uppercase tracking-widest font-black shadow-sm text-slate-800 border border-white/50">
-                        {project.type}
-                      </div>
-                      {project.packageType && (
-                        <div className={`backdrop-blur-xl px-4 py-1.5 rounded-full text-[10px] uppercase tracking-widest font-black shadow-sm border ${getPackageBadgeClasses(project.packageType)}`}>
-                          {project.packageType}
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Activity Dot */}
-                    {project.activityLog && project.activityLog.length > 0 && (
-                      (new Date().getTime() - new Date(project.activityLog[0].timestamp).getTime()) < 86400000 && (
-                        <div className="flex items-center gap-1.5 backdrop-blur-md bg-slate-900/80 px-3 py-1.5 rounded-full shadow-lg border border-white/10">
-                          <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]"></span>
-                          <span className="text-[10px] text-white font-bold tracking-widest uppercase">New</span>
-                        </div>
-                      )
-                    )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {projects.map(project => (
+          <div
+            key={project.id}
+            onClick={() => onSelect(project)}
+            className="group relative cursor-pointer pt-2 pb-6 project-card"
+          >
+            {/* Main Architectural Image Container */}
+            <div className="h-56 w-full rounded-[2rem] overflow-hidden relative shadow-md will-change-transform project-card-media">
+              {imageLoading[project.id] && (
+                <div className="absolute inset-0 bg-slate-200 animate-pulse" />
+              )}
+              {project.thumbnail ? (
+                <img
+                  src={project.thumbnail}
+                  alt={project.name}
+                  className="w-full h-full object-cover"
+                  onLoad={() => setImageLoading(prev => ({ ...prev, [project.id]: false }))}
+                  onLoadStart={() => setImageLoading(prev => ({ ...prev, [project.id]: true }))}
+                />
+              ) : (
+                <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+                  <Palette className="w-12 h-12 text-slate-300" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-slate-900/10" />
+
+              {/* Floating Badges inside Image */}
+              <div className="absolute top-5 left-5 right-5 flex justify-between items-center z-10">
+                <div className="flex gap-2 flex-wrap">
+                  <div className="backdrop-blur-xl bg-white/70 px-4 py-1.5 rounded-full text-[10px] uppercase tracking-widest font-black shadow-sm text-slate-800 border border-white/50">
+                    {project.type}
                   </div>
+                  {project.packageType && (
+                    <div className={`backdrop-blur-xl px-4 py-1.5 rounded-full text-[10px] uppercase tracking-widest font-black shadow-sm border ${getPackageBadgeClasses(project.packageType)}`}>
+                      {project.packageType}
+                    </div>
+                  )}
                 </div>
 
-                {/* Overlapping Glass Content Box */}
-                <div className="relative z-20 mx-4 -mt-12 bg-white/90 backdrop-blur-2xl rounded-2xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.08)] border border-white/60 hover:shadow-xl transition-shadow duration-300 project-card-content">
-                  <div className="mb-2">
-                    <h3 className="font-extrabold text-slate-800 text-xl tracking-tight line-clamp-1">{project.name}</h3>
-                  </div>
-                  
-                  <p className="text-sm text-slate-500 mb-6 line-clamp-2 leading-relaxed">{project.description}</p>
-                  
-                  {/* Distinct Progress Line Component */}
-                  <div className="mb-5">
-                    <div className="flex justify-between items-end mb-2">
-                       <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Milestone Phase</span>
-                       <span className="text-sm font-black text-slate-800">
-                         {calculateProjectProgress(realTimeTasks.get(project.id) || project.tasks)}%
-                       </span>
+                {/* Activity Dot */}
+                {project.activityLog && project.activityLog.length > 0 && (
+                  (new Date().getTime() - new Date(project.activityLog[0].timestamp).getTime()) < 86400000 && (
+                    <div className="flex items-center gap-1.5 backdrop-blur-md bg-slate-900/80 px-3 py-1.5 rounded-full shadow-lg border border-white/10">
+                      <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]"></span>
+                      <span className="text-[10px] text-white font-bold tracking-widest uppercase">New</span>
                     </div>
-                    <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
-                      <div
-                        {...{ style: { width: `${calculateProjectProgress(realTimeTasks.get(project.id) || project.tasks)}%` } }}
-                        className="bg-slate-800 h-full rounded-full transition-all duration-1000 ease-out"
-                      />
-                    </div>
-                  </div>
+                  )
+                )}
+              </div>
+            </div>
 
-                  {/* Refined Footer */}
-                  <div className="flex justify-between items-center pt-4 border-t border-slate-100/80">
-                    <div className="flex items-center gap-1">
-                      {user?.role === Role.ADMIN && (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingProject(project);
-                              setIsNewProjectModalOpen(true);
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-                            title="Edit project"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onRequestDelete(project);
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                            title="Delete project"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="text-[11px] uppercase tracking-wider font-bold text-slate-500">
-                        {formatDateToIndian(project.deadline) || 'No date'}
-                      </span>
-                    </div>
-                  </div>
+            {/* Overlapping Glass Content Box */}
+            <div className="relative z-20 mx-4 -mt-12 bg-white/90 backdrop-blur-2xl rounded-2xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.08)] border border-white/60 hover:shadow-xl transition-shadow duration-300 project-card-content">
+              <div className="mb-2">
+                <h3 className="font-extrabold text-slate-800 text-xl tracking-tight line-clamp-1">{project.name}</h3>
+              </div>
+
+              <p className="text-sm text-slate-500 mb-6 line-clamp-2 leading-relaxed">{project.description}</p>
+
+              {/* Distinct Progress Line Component */}
+              <div className="mb-5">
+                <div className="flex justify-between items-end mb-2">
+                  <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Milestone Phase</span>
+                  <span className="text-sm font-black text-slate-800">
+                    {calculateProjectProgress(realTimeTasks.get(project.id) || project.tasks)}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
+                  <div
+                    {...{ style: { width: `${calculateProjectProgress(realTimeTasks.get(project.id) || project.tasks)}%` } }}
+                    className="bg-slate-800 h-full rounded-full transition-all duration-1000 ease-out"
+                  />
                 </div>
               </div>
-            ))}
+
+              {/* Refined Footer */}
+              <div className="flex justify-between items-center pt-4 border-t border-slate-100/80">
+                <div className="flex items-center gap-1">
+                  {user?.role === Role.ADMIN && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingProject(project);
+                          setIsNewProjectModalOpen(true);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                        title="Edit project"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRequestDelete(project);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Delete project"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-[11px] uppercase tracking-wider font-bold text-slate-500">
+                    {formatDateToIndian(project.deadline) || 'No date'}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+const PlanList = ({
+  plans,
+  onSelect,
+  user,
+  setEditingPlan,
+  setIsNewPlanModalOpen,
+  onRequestDelete,
+  realTimeTasks
+}: {
+  plans: Plan[],
+  onSelect: (p: Plan) => void,
+  user: User | null,
+  setEditingPlan: (plan: Plan | null) => void,
+  setIsNewPlanModalOpen: (open: boolean) => void,
+  onRequestDelete: (plan: Plan) => void,
+  realTimeTasks: Map<string, Task[]>
+}) => {
+  const [imageLoading, setImageLoading] = useState<Record<string, boolean>>({});
+
+  const getCreativeQuota = (packageType?: string): number => {
+    const normalized = (packageType || '').toLowerCase();
+    if (normalized.includes('starter') || normalized.includes('package 1') || normalized.includes('20')) return 20;
+    if (normalized.includes('growth') || normalized.includes('package 2') || normalized.includes('50')) return 50;
+    if (normalized.includes('business') || normalized.includes('package 3') || normalized.includes('100')) return 100;
+    if (normalized.includes('impact') || normalized.includes('package 4') || normalized.includes('200')) return 200;
+    return 0; // custom/default
+  };
+
+  const getPackageStyles = (packageType?: string) => {
+    const normalized = (packageType || '').toLowerCase();
+    if (normalized.includes('starter') || normalized.includes('package 1') || normalized.includes('50')) {
+      return {
+        color: 'hsl(340, 82%, 55%)',
+        bgColor: 'hsl(340, 82%, 97%)',
+        borderColor: 'hsl(340, 82%, 90%)',
+        progressColor: 'from-pink-500 to-rose-600',
+      };
+    } else if (normalized.includes('growth') || normalized.includes('package 2') || normalized.includes('100')) {
+      return {
+        color: 'hsl(16, 100%, 60%)',
+        bgColor: 'hsl(16, 100%, 97%)',
+        borderColor: 'hsl(16, 100%, 90%)',
+        progressColor: 'from-orange-500 to-amber-600',
+      };
+    } else if (normalized.includes('business') || normalized.includes('package 3') || normalized.includes('200')) {
+      return {
+        color: 'hsl(168, 51%, 48%)',
+        bgColor: 'hsl(168, 51%, 97%)',
+        borderColor: 'hsl(168, 51%, 90%)',
+        progressColor: 'from-teal-500 to-emerald-600',
+      };
+    } else {
+      return {
+        color: 'hsl(227, 52%, 34%)',
+        bgColor: 'hsl(227, 52%, 97%)',
+        borderColor: 'hsl(227, 52%, 90%)',
+        progressColor: 'from-blue-700 to-indigo-800',
+      };
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in plans-surface">
+      {plans.map(plan => {
+        const totalQuota = getCreativeQuota(plan.packageType);
+        const used = plan.creativeUsed || 0;
+        const progressPercent = totalQuota > 0 ? Math.min(Math.round((used / totalQuota) * 100), 100) : 0;
+        const styles = getPackageStyles(plan.packageType);
+
+        return (
+          <div
+            key={plan.id}
+            onClick={() => onSelect(plan)}
+            className="group relative cursor-pointer pt-2 pb-6 project-card"
+          >
+            {/* Architectural Image Container */}
+            <div className="h-56 w-full rounded-[2rem] overflow-hidden relative shadow-md will-change-transform project-card-media">
+              {imageLoading[plan.id] && (
+                <div className="absolute inset-0 bg-slate-200 animate-pulse" />
+              )}
+              {plan.thumbnail ? (
+                <img
+                  src={plan.thumbnail}
+                  alt={plan.name}
+                  className="w-full h-full object-cover"
+                  onLoad={() => setImageLoading(prev => ({ ...prev, [plan.id]: false }))}
+                  onLoadStart={() => setImageLoading(prev => ({ ...prev, [plan.id]: true }))}
+                />
+              ) : (
+                <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+                  <Layers className="w-12 h-12 text-slate-300" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-slate-900/10" />
+
+              {/* Floating Badges */}
+              <div className="absolute top-5 left-5 right-5 flex justify-between items-center z-10">
+                <div className="backdrop-blur-xl px-4 py-1.5 rounded-full text-[10px] uppercase tracking-widest font-black shadow-sm border"
+                  style={{
+                    backgroundColor: styles.bgColor,
+                    borderColor: styles.borderColor,
+                    color: styles.color
+                  }}
+                >
+                  {plan.packageType}
+                </div>
+              </div>
+            </div>
+
+            {/* Overlapping Glass Content Box */}
+            <div className="relative z-20 mx-4 -mt-12 bg-white/90 backdrop-blur-2xl rounded-2xl p-6 shadow-[0_10px_40px_rgba(0,0,0,0.08)] border border-white/60 hover:shadow-xl transition-shadow duration-300 project-card-content">
+              <div className="mb-2">
+                <h3 className="font-extrabold text-slate-800 text-xl tracking-tight line-clamp-1">{plan.name}</h3>
+              </div>
+
+              <p className="text-sm text-slate-500 mb-6 line-clamp-2 leading-relaxed">{plan.description || "No description provided."}</p>
+
+              {/* Creative Quota Progress */}
+              <div className="mb-5">
+                <div className="flex justify-between items-end mb-2">
+                  <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Creative Quota</span>
+                  <span className="text-sm font-black text-slate-800">
+                    {used}/{totalQuota} used ({progressPercent}%)
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    style={{ width: `${progressPercent}%` }}
+                    className={`bg-gradient-to-r ${styles.progressColor} h-full rounded-full transition-all duration-1000 ease-out`}
+                  />
+                </div>
+              </div>
+
+              {/* Refined Footer */}
+              <div className="flex justify-between items-center pt-4 border-t border-slate-100/80">
+                <div className="flex items-center gap-1">
+                  {user?.role === Role.ADMIN && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingPlan(plan);
+                          setIsNewPlanModalOpen(true);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                        title="Edit plan"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRequestDelete(plan);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Delete plan"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-[11px] uppercase tracking-wider font-bold text-slate-500">
+                    {formatDateToIndian(plan.deadline) || 'No date'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -261,7 +417,7 @@ interface AppContentProps {
 
 function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }: AppContentProps) {
 
-  const { user, logout, loading: authLoading, currentTenant } = useAuth();
+  const { user, logout, updateUser, loading: authLoading, currentTenant } = useAuth();
 
   const adminProfileFallback = {
     name: 'Admin User',
@@ -271,11 +427,11 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
 
   const profileDisplayData = user && user.role === Role.ADMIN
     ? {
-        ...user,
-        name: user.name?.trim() || adminProfileFallback.name,
-        email: user.email?.trim() || adminProfileFallback.email,
-        phone: user.phone?.trim() || adminProfileFallback.phone,
-      }
+      ...user,
+      name: user.name?.trim() || adminProfileFallback.name,
+      email: user.email?.trim() || adminProfileFallback.email,
+      phone: user.phone?.trim() || adminProfileFallback.phone,
+    }
     : user;
 
   const { unreadCount, addNotification } = useNotifications();
@@ -299,13 +455,20 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [isDeletingPlan, setIsDeletingPlan] = useState(false);
+  const [planToDelete, setPlanToDelete] = useState<Plan | null>(null);
+  const [isNewPlanModalOpen, setIsNewPlanModalOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [isChangePlanModalOpen, setIsChangePlanModalOpen] = useState(false);
+  const [planToChange, setPlanToChange] = useState<Plan | null>(null);
   const [isBrandingSettingsOpen, setIsBrandingSettingsOpen] = useState(false);
+  const [isEditingProfileName, setIsEditingProfileName] = useState(false);
+  const [profileNameValue, setProfileNameValue] = useState('');
+  const [isSavingProfileName, setIsSavingProfileName] = useState(false);
   // const [isFirmSettingsOpen, setIsFirmSettingsOpen] = useState(false); // COMMENTED OUT: Cross-firm support disabled
   const [isLoading, setIsLoading] = useState(true);
   const [realTimeTasks, setRealTimeTasks] = useState<Map<string, Task[]>>(new Map());
   const [showNotifPermissionBanner, setShowNotifPermissionBanner] = useState(false);
-  const [isAutoSeedingDemo, setIsAutoSeedingDemo] = useState(false);
-  const [isReloadingDummyData, setIsReloadingDummyData] = useState(false);
 
   // --- Project Filter State ---
   const [projectNameFilter, setProjectNameFilter] = useState('');
@@ -361,42 +524,7 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
     }
   };
 
-  const handleReloadDummyData = async () => {
-    if (!user || user.role !== Role.ADMIN || isReloadingDummyData) return;
 
-    const effectiveTenantId = user.tenantId || 'vast-canvas';
-    if (!effectiveTenantId) return;
-
-    try {
-      setIsReloadingDummyData(true);
-      const result = await seedDemoData(effectiveTenantId, user.id, { replaceExisting: true });
-
-      if (result.success) {
-        addNotification({
-          title: 'Dummy Data Reloaded',
-          message: `${result.demoProjectIds?.length || 0} demo projects were refreshed successfully.`,
-          type: 'success',
-          recipientId: user.id
-        });
-      } else {
-        addNotification({
-          title: 'Dummy Data Reload Status',
-          message: result.message,
-          type: 'warning',
-          recipientId: user.id
-        });
-      }
-    } catch (error: any) {
-      addNotification({
-        title: 'Dummy Data Reload Failed',
-        message: error?.message || 'Could not reload dummy data.',
-        type: 'error',
-        recipientId: user.id
-      });
-    } finally {
-      setIsReloadingDummyData(false);
-    }
-  };
 
   // Subscribe to Firebase real-time updates
   useEffect(() => {
@@ -443,7 +571,7 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
 
     // Keep references to latest lists from each subscription
     const latestUsers = { general: [] as User[], designers: [] as User[], clients: [] as User[] };
-    
+
     const refreshUsers = () => {
       const map = new Map<string, User>();
       latestUsers.general.forEach(u => map.set(u.id, u));
@@ -572,13 +700,22 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
 
   // Handlers
   const handleUpdateProject = (updated: Project) => {
-    setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
-    setSelectedProject(updated);
-    // Also save to Firestore
-    const { id, ...projectDataWithoutId } = updated;
-    updateProject(updated.id, projectDataWithoutId as Partial<Project>).catch((err: any) => {
-      console.error('Failed to save project update to Firebase:', err);
-    });
+    const isPlan = plans.some(p => p.id === updated.id) || (!!updated.packageType && !projects.some(p => p.id === updated.id));
+    if (isPlan) {
+      setPlans(prev => prev.map(p => p.id === updated.id ? (updated as unknown as Plan) : p));
+      setSelectedProject(updated);
+      const { id, ...planDataWithoutId } = updated as any;
+      updatePlan(updated.id, planDataWithoutId).catch((err: any) => {
+        console.error('Failed to save plan update to Firebase:', err);
+      });
+    } else {
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      setSelectedProject(updated);
+      const { id, ...projectDataWithoutId } = updated;
+      updateProject(updated.id, projectDataWithoutId as Partial<Project>).catch((err: any) => {
+        console.error('Failed to save project update to Firebase:', err);
+      });
+    }
   };
 
   const handleAddUser = (newUser: User) => {
@@ -595,13 +732,37 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
 
   const handleDeleteProject = async (project: Project) => {
     try {
-      // Optimistic update
-      setProjects(prev => prev.filter(p => p.id !== project.id));
-      await deleteProject(project.id);
-      addNotification('Success', `Project "${project.name}" deleted successfully`, 'success');
+      const isPlan = plans.some(p => p.id === project.id) || (!!project.packageType && !projects.some(p => p.id === project.id));
+      if (isPlan) {
+        setPlans(prev => prev.filter(p => p.id !== project.id));
+        await deletePlan(project.id);
+      } else {
+        setProjects(prev => prev.filter(p => p.id !== project.id));
+        await deleteProject(project.id);
+      }
+      addNotification('Success', `${isPlan ? 'Plan' : 'Project'} "${project.name}" deleted successfully`, 'success');
     } catch (error: any) {
       console.error('Error deleting project:', error);
       addNotification('Error', `Failed to delete project: ${error.message}`, 'error');
+    }
+  };
+
+  const handleAddPlan = (newPlan: Plan) => {
+    // Don't add to local state - let Firebase subscription handle it
+  };
+
+  const handleUpdatePlan = (updatedPlan: Plan) => {
+    setPlans(prev => prev.map(p => p.id === updatedPlan.id ? updatedPlan : p));
+  };
+
+  const handleDeletePlan = async (plan: Plan) => {
+    try {
+      setPlans(prev => prev.filter(p => p.id !== plan.id));
+      await deletePlan(plan.id);
+      addNotification('Success', `Plan "${plan.name}" deleted successfully`, 'success');
+    } catch (error: any) {
+      console.error('Error deleting plan:', error);
+      addNotification('Error', `Failed to delete plan: ${error.message}`, 'error');
     }
   };
 
@@ -652,8 +813,8 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
         setIsTaskOnlyView(false);
       }}
       className={`flex flex-col items-center justify-center py-2 px-3 transition-all duration-300 min-w-[64px] ${currentView === view && !selectedProject
-          ? 'mobile-nav-item-active'
-          : 'text-gray-400 hover:text-gray-900'
+        ? 'mobile-nav-item-active'
+        : 'text-gray-400 hover:text-gray-900'
         }`}
       title={label}
     >
@@ -889,7 +1050,7 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                     <div className="space-y-6">
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                         <div>
-                          <h2 className="text-2xl font-bold text-gray-800">Normal Custom Projects</h2>
+                          <h2 className="text-2xl font-bold text-gray-800">Deus Projects</h2>
                           <p className="text-sm text-gray-500 mt-1">Individual tailored design services</p>
                         </div>
                         {(user.role === Role.ADMIN || user.role === Role.DESIGNER) && (
@@ -1058,7 +1219,7 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                         </div>
                       </div>
 
-                        
+
 
                       {visibleProjects.filter(p => !p.packageType).length > 0 ? (
                         <ProjectList
@@ -1130,27 +1291,26 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                       )}
                     </div>
                   )}
-
                   {currentView === 'plans' && (
                     <div className="space-y-6">
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                         <div>
-                          <h2 className="text-2xl font-bold text-gray-800">Firm Plans</h2>
-                          <p className="text-sm text-gray-500 mt-1">Predefined package structures provided by the firm</p>
+                          <h2 className="text-2xl font-bold text-gray-800">Firm Creative Plans</h2>
+                          <p className="text-sm text-gray-500 mt-1">Predefined package structures and creative quotas</p>
                         </div>
-                        {(user.role === Role.ADMIN) && (
+                        {user.role === Role.ADMIN && (
                           <button
-                            onClick={() => setIsNewProjectModalOpen(true)}
+                            onClick={() => setIsNewPlanModalOpen(true)}
                             className="bg-gray-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-800 transition-colors shadow-sm flex items-center justify-center gap-2 w-full sm:w-auto"
                           >
-                            <Palette className="w-4 h-4" /> New Plan Project
+                            <Palette className="w-4 h-4" /> New Creative Plan
                           </button>
                         )}
                       </div>
 
-                      {/* Project Filters */}
+                      {/* Plan Filters */}
                       <div className="bg-white rounded-lg border border-gray-200 p-3">
-                        <div className="hidden md:flex md:items-end gap-3">
+                        <div className="flex flex-col md:flex-row md:items-end gap-3">
                           <div className="flex-1 min-w-[180px]">
                             <label className="block text-xs font-medium text-gray-700 mb-1">Search by Name</label>
                             <input
@@ -1160,27 +1320,6 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                               onChange={(e) => setProjectNameFilter(e.target.value)}
                               className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
                             />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
-                            <select
-                              aria-label="Filter by category"
-                              value={projectCategoryFilterValue}
-                              onChange={(e) => setProjectCategoryFilterValue(e.target.value as ProjectCategory | 'All')}
-                              className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white hover:bg-gray-50 cursor-pointer font-medium text-gray-700 appearance-none"
-                              style={{
-                                backgroundImage: "url('data:image/svg+xml;utf8,<svg fill=\"none\" height=\"20\" viewBox=\"0 0 20 20\" width=\"20\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 8l3 3 3-3\" stroke=\"%23333\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\"></path></svg>')",
-                                backgroundPosition: 'right 0.5rem center',
-                                backgroundRepeat: 'no-repeat',
-                                backgroundSize: '1.25rem 1.25rem',
-                                paddingRight: '1.75rem'
-                              }}
-                            >
-                              <option value="All">All Categories</option>
-                              <option value={ProjectCategory.RESIDENTIAL}>Residential</option>
-                              <option value={ProjectCategory.COMMERCIAL}>Commercial</option>
-                            </select>
                           </div>
 
                           <div>
@@ -1207,12 +1346,11 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                             </select>
                           </div>
 
-                          {(projectNameFilter || projectCategoryFilterValue !== 'All') && (
+                          {projectNameFilter && (
                             <button
                               type="button"
                               onClick={() => {
                                 setProjectNameFilter('');
-                                setProjectCategoryFilterValue('All');
                               }}
                               className="px-2 py-1.5 bg-gray-200 hover:bg-gray-300 rounded text-xs font-medium transition-colors"
                             >
@@ -1222,23 +1360,18 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                         </div>
                       </div>
 
-                      {visibleProjects.filter(p => !!p.packageType).length > 0 ? (
-                        <ProjectList
-                          projects={(() => {
-                            // First filter the projects (Only plan-based ones)
-                            let filtered = visibleProjects.filter(p => !!p.packageType).filter(p => {
-                              // Name filter
+                      {visiblePlans.length > 0 ? (
+                        <PlanList
+                          plans={(() => {
+                            // Filter in-memory plans
+                            let filtered = visiblePlans.filter(p => {
                               if (projectNameFilter.trim() && !p.name.toLowerCase().includes(projectNameFilter.toLowerCase())) {
-                                return false;
-                              }
-                              // Category filter
-                              if (projectCategoryFilterValue !== 'All' && p.category !== projectCategoryFilterValue) {
                                 return false;
                               }
                               return true;
                             });
 
-                            // Then sort the filtered projects
+                            // Then sort
                             return filtered.sort((a, b) => {
                               switch (projectSortBy) {
                                 case 'name-asc':
@@ -1246,13 +1379,13 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                                 case 'name-desc':
                                   return b.name.localeCompare(a.name);
                                 case 'progress-asc': {
-                                  const progressA = calculateProjectProgress(realTimeTasks.get(a.id) || []);
-                                  const progressB = calculateProjectProgress(realTimeTasks.get(b.id) || []);
+                                  const progressA = a.creativeUsed || 0;
+                                  const progressB = b.creativeUsed || 0;
                                   return progressA - progressB;
                                 }
                                 case 'progress-desc': {
-                                  const progressA = calculateProjectProgress(realTimeTasks.get(a.id) || []);
-                                  const progressB = calculateProjectProgress(realTimeTasks.get(b.id) || []);
+                                  const progressA = a.creativeUsed || 0;
+                                  const progressB = b.creativeUsed || 0;
                                   return progressB - progressA;
                                 }
                                 case 'recent-asc': {
@@ -1270,24 +1403,24 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                               }
                             });
                           })()}
-                          onSelect={(project) => {
-                            setSelectedProject(project);
+                          onSelect={(plan) => {
+                            setSelectedProject(plan as unknown as Project);
                             setSelectedTask(null);
                             setIsTaskOnlyView(false);
                             setInitialProjectTab(undefined);
                           }}
                           user={user}
-                          setEditingProject={setEditingProject}
-                          setIsNewProjectModalOpen={setIsNewProjectModalOpen}
-                          onRequestDelete={(project) => {
-                            setProjectToDelete(project);
-                            setIsDeletingProject(true);
+                          setEditingPlan={setEditingPlan}
+                          setIsNewPlanModalOpen={setIsNewPlanModalOpen}
+                          onRequestDelete={(plan) => {
+                            setPlanToDelete(plan);
+                            setIsDeletingPlan(true);
                           }}
                           realTimeTasks={realTimeTasks}
                         />
                       ) : (
                         <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
-                          <p className="text-gray-500">No projects under firm plans found.</p>
+                          <p className="text-gray-500">No creative plans found.</p>
                         </div>
                       )}
                     </div>
@@ -1340,8 +1473,92 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                           <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                               <div>
-                                <p className="text-xs text-gray-500 font-semibold">Name</p>
-                                <p className="text-gray-900 font-medium">{profileDisplayData?.name}</p>
+                                <p className="text-xs text-gray-500 font-semibold mb-1">Name</p>
+                                {isEditingProfileName ? (
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="text"
+                                      value={profileNameValue}
+                                      onChange={(e) => setProfileNameValue(e.target.value)}
+                                      disabled={isSavingProfileName}
+                                      className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                                      autoFocus
+                                      onKeyDown={async (e) => {
+                                        if (e.key === 'Enter') {
+                                          if (!user) return;
+                                          if (!profileNameValue.trim()) {
+                                            addNotification('Error', 'Name cannot be empty', 'error');
+                                            return;
+                                          }
+                                          setIsSavingProfileName(true);
+                                          try {
+                                            const { db } = await import('./services/firebaseConfig');
+                                            const { doc, updateDoc } = await import('firebase/firestore');
+                                            await updateDoc(doc(db, 'users', user.id), { name: profileNameValue.trim() });
+                                            updateUser({ name: profileNameValue.trim() });
+                                            addNotification('Success', 'Profile name updated successfully', 'success');
+                                            setIsEditingProfileName(false);
+                                          } catch (error) {
+                                            console.error('Failed to update profile name:', error);
+                                            addNotification('Error', 'Failed to update profile name', 'error');
+                                          } finally {
+                                            setIsSavingProfileName(false);
+                                          }
+                                        } else if (e.key === 'Escape') {
+                                          setIsEditingProfileName(false);
+                                        }
+                                      }}
+                                    />
+                                    <button
+                                      onClick={async () => {
+                                        if (!user) return;
+                                        if (!profileNameValue.trim()) {
+                                          addNotification('Error', 'Name cannot be empty', 'error');
+                                          return;
+                                        }
+                                        setIsSavingProfileName(true);
+                                        try {
+                                          const { db } = await import('./services/firebaseConfig');
+                                          const { doc, updateDoc } = await import('firebase/firestore');
+                                          await updateDoc(doc(db, 'users', user.id), { name: profileNameValue.trim() });
+                                          updateUser({ name: profileNameValue.trim() });
+                                          addNotification('Success', 'Profile name updated successfully', 'success');
+                                          setIsEditingProfileName(false);
+                                        } catch (error) {
+                                          console.error('Failed to update profile name:', error);
+                                          addNotification('Error', 'Failed to update profile name', 'error');
+                                        } finally {
+                                          setIsSavingProfileName(false);
+                                        }
+                                      }}
+                                      disabled={isSavingProfileName}
+                                      className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 disabled:opacity-50"
+                                    >
+                                      <span className="text-xs font-medium">{isSavingProfileName ? '...' : 'Save'}</span>
+                                    </button>
+                                    <button
+                                      onClick={() => setIsEditingProfileName(false)}
+                                      disabled={isSavingProfileName}
+                                      className="p-1.5 bg-gray-50 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-50"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 group">
+                                    <p className="text-gray-900 font-medium">{profileDisplayData?.name}</p>
+                                    <button
+                                      onClick={() => {
+                                        setProfileNameValue(profileDisplayData?.name || '');
+                                        setIsEditingProfileName(true);
+                                      }}
+                                      className="p-1 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-blue-600 hover:bg-blue-50 rounded transition-all"
+                                      title="Edit Name"
+                                    >
+                                      <Edit className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                               <div>
                                 <p className="text-xs text-gray-500 font-semibold">Email</p>
@@ -1357,20 +1574,9 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                                   <p className="text-gray-900 font-medium">{profileDisplayData.phone}</p>
                                 </div>
                               )}
-                            </div>
-                            {user.role === Role.ADMIN && (
-                              <div className="pt-2">
-                                <button
-                                  onClick={handleReloadDummyData}
-                                  disabled={isReloadingDummyData}
-                                  className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                                >
-                                  {isReloadingDummyData ? 'Reloading Dummy Data...' : 'Reload Dummy Data'}
-                                </button>
-                              </div>
-                            )}
                           </div>
                         </div>
+                      </div>
                         {/* Mobile-only Sign Out (visible inside Settings) */}
                         <div className="md:hidden mt-4">
                           <button
@@ -1488,10 +1694,44 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
             setIsNewProjectModalOpen(false);
             setEditingProject(null);
           }}
-          onSave={handleAddProject}
+          onSave={(newOrUpdatedProject: Project) => {
+            if (editingProject) {
+              handleUpdateProject(newOrUpdatedProject);
+            } else {
+              handleAddProject(newOrUpdatedProject);
+            }
+          }}
           initialProject={editingProject}
-          isPlanMode={currentView === 'plans' || (editingProject?.packageType !== undefined)}
-        // selectedFirmId={selectedFirmId} // COMMENTED OUT: Cross-firm support disabled
+        />
+      )}
+
+      {isNewPlanModalOpen && (
+        <NewPlanModal
+          users={users}
+          onClose={() => {
+            setIsNewPlanModalOpen(false);
+            setEditingPlan(null);
+          }}
+          onSave={(newOrUpdatedPlan: Plan) => {
+            if (editingPlan) {
+              handleUpdatePlan(newOrUpdatedPlan);
+            } else {
+              handleAddPlan(newOrUpdatedPlan);
+            }
+          }}
+          initialPlan={editingPlan}
+        />
+      )}
+
+      {isChangePlanModalOpen && planToChange && (
+        <ChangePlanModal
+          isOpen={isChangePlanModalOpen}
+          onClose={() => {
+            setIsChangePlanModalOpen(false);
+            setPlanToChange(null);
+          }}
+          plan={planToChange}
+          onSave={handleUpdatePlan}
         />
       )}
 
@@ -1501,15 +1741,6 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
           onClose={() => setIsBrandingSettingsOpen(false)}
         />
       )}
-
-      {/* COMMENTED OUT: Cross-firm support disabled
-      {isFirmSettingsOpen && (
-        <FirmSettings 
-          isOpen={isFirmSettingsOpen}
-          onClose={() => setIsFirmSettingsOpen(false)}
-        />
-      )}
-      */}
 
       {/* Page title updater for tenant branding */}
       <PageTitleUpdater />
@@ -1524,9 +1755,29 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
           title="Delete Project"
           message={`Are you sure you want to delete project "${projectToDelete.name}"? This action cannot be undone.`}
           onConfirm={() => {
-            onDeleteProject(projectToDelete);
+            handleDeleteProject(projectToDelete);
             setIsDeletingProject(false);
             setProjectToDelete(null);
+          }}
+          confirmText="Delete"
+          cancelText="Cancel"
+          variant="danger"
+        />
+      )}
+
+      {isDeletingPlan && planToDelete && (
+        <ConfirmDialog
+          isOpen={true}
+          onClose={() => {
+            setIsDeletingPlan(false);
+            setPlanToDelete(null);
+          }}
+          title="Delete Plan"
+          message={`Are you sure you want to delete plan "${planToDelete.name}"? This action cannot be undone.`}
+          onConfirm={() => {
+            handleDeletePlan(planToDelete);
+            setIsDeletingPlan(false);
+            setPlanToDelete(null);
           }}
           confirmText="Delete"
           cancelText="Cancel"

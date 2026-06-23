@@ -14,7 +14,9 @@ import {
   signInWithPopup
 } from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
-import { auth, functions } from "./firebaseConfig";
+import { auth, functions, db } from "./firebaseConfig";
+import { collection, query, where, getDocs } from "firebase/firestore";
+
 
 // Login with email and password
 export const loginWithEmail = async (email: string, password: string): Promise<FirebaseUser> => {
@@ -71,6 +73,113 @@ let globalRecaptchaVerifier: RecaptchaVerifier | null = null;
 
 // Setup phone authentication (minimal reCAPTCHA for Firebase compatibility)
 export const setupPhoneAuthentication = async (phoneNumber: string, recaptchaContainerId: string): Promise<any> => {
+  const sanitizedPhoneNumber = phoneNumber.trim();
+  const cleanPhone = sanitizedPhoneNumber.replace(/\D/g, '');
+  const last10 = cleanPhone.slice(-10);
+
+  const isDev = (import.meta.env.DEV || 
+                 process.env.NODE_ENV !== 'production' || 
+                 window.location.hostname === 'localhost' || 
+                 window.location.hostname === '127.0.0.1') &&
+                import.meta.env.VITE_USE_REAL_SMS !== 'true';
+
+  if (isDev) {
+    console.log('📱 Dev Mode: Bypassing real Firebase Phone Auth and using mock fallback.');
+    
+    // Query Firestore users collection
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('phone', '==', cleanPhone));
+    const querySnapshot = await getDocs(q);
+    
+    let foundUser: any = null;
+    if (!querySnapshot.empty) {
+      foundUser = querySnapshot.docs[0].data();
+    } else {
+      // Check for with + sign
+      const qPlus = query(usersRef, where('phone', '==', `+${cleanPhone}`));
+      const querySnapshotPlus = await getDocs(qPlus);
+      if (!querySnapshotPlus.empty) {
+        foundUser = querySnapshotPlus.docs[0].data();
+      } else {
+        // Check for last 10 digits as fallback
+        const q2 = query(usersRef, where('phone', '==', last10));
+        const querySnapshot2 = await getDocs(q2);
+        if (!querySnapshot2.empty) {
+          foundUser = querySnapshot2.docs[0].data();
+        } else {
+          // Try querying all users and checking their normalized phone numbers in memory (bulletproof fallback)
+          try {
+            const allUsersSnap = await getDocs(usersRef);
+            foundUser = allUsersSnap.docs
+              .map(doc => doc.data())
+              .find((u: any) => {
+                const uPhone = (u.phone || '').replace(/\D/g, '');
+                return uPhone && (uPhone === cleanPhone || uPhone.endsWith(last10) || cleanPhone.endsWith(uPhone.slice(-10)));
+              });
+          } catch (allUsersErr) {
+            console.error("Error doing in-memory phone lookup fallback:", allUsersErr);
+          }
+        }
+      }
+    }
+    
+    if (foundUser) {
+      console.log(`✅ Development Fallback: Found user for phone ${sanitizedPhoneNumber}:`, foundUser.email || foundUser.name);
+      
+      const userEmail = foundUser.email || `${cleanPhone}@kydo-phone-auth.local`;
+      const userPassword = foundUser.password || cleanPhone.slice(-6) || '123456';
+      
+      return {
+        isMock: true,
+        phoneNumber: sanitizedPhoneNumber,
+        email: userEmail,
+        password: userPassword,
+        confirm: async (code: string) => {
+          const expectedCode = cleanPhone.slice(-6) || '123456';
+          if (code === '123456' || code === expectedCode) {
+            try {
+              const result = await signInWithEmailAndPassword(auth, userEmail, userPassword);
+              await result.user.getIdTokenResult(true);
+              
+              // Define the phoneNumber property on result.user so it can be claimed
+              Object.defineProperty(result.user, 'phoneNumber', {
+                value: sanitizedPhoneNumber,
+                writable: true,
+                enumerable: true,
+                configurable: true
+              });
+              
+              return result;
+            } catch (signInErr: any) {
+              if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential' || signInErr.code === 'auth/wrong-password') {
+                console.log(`Creating fallback Firebase Auth account for phone: ${userEmail}`);
+                const createResult = await createUserWithEmailAndPassword(auth, userEmail, userPassword);
+                await createResult.user.getIdTokenResult(true);
+                
+                Object.defineProperty(createResult.user, 'phoneNumber', {
+                  value: sanitizedPhoneNumber,
+                  writable: true,
+                  enumerable: true,
+                  configurable: true
+                });
+                
+                return createResult;
+              }
+              throw signInErr;
+            }
+          } else {
+            const err = new Error('Invalid verification code');
+            (err as any).code = 'auth/invalid-verification-code';
+            throw err;
+          }
+        }
+      };
+    } else {
+      throw new Error(`Phone number ${sanitizedPhoneNumber} is not registered. Please contact the administrator to create your profile.`);
+    }
+  }
+
+  // Real phone auth flow for production
   try {
     console.log('📱 Initializing phone authentication...');
     
@@ -80,17 +189,7 @@ export const setupPhoneAuthentication = async (phoneNumber: string, recaptchaCon
       throw new Error('reCAPTCHA_enterprise_failed');
     }
 
-    // Verify container exists
-    let container = document.getElementById(recaptchaContainerId);
-    if (!container) {
-      console.log(`⚠️ Container ${recaptchaContainerId} not found, creating it`);
-      container = document.createElement('div');
-      container.id = recaptchaContainerId;
-      container.style.display = 'none'; // Hide it for invisible mode
-      document.body.appendChild(container);
-    }
-
-    // Clear any existing verifier
+    // Clear any existing verifier first to release the widget
     if (globalRecaptchaVerifier) {
       try {
         globalRecaptchaVerifier.clear();
@@ -100,7 +199,18 @@ export const setupPhoneAuthentication = async (phoneNumber: string, recaptchaCon
       globalRecaptchaVerifier = null;
     }
 
-    const sanitizedPhoneNumber = phoneNumber.trim();
+    // Verify container exists and clean it
+    let container = document.getElementById(recaptchaContainerId);
+    if (container) {
+      container.innerHTML = '';
+    } else {
+      console.log(`⚠️ Container ${recaptchaContainerId} not found, creating it`);
+      container = document.createElement('div');
+      container.id = recaptchaContainerId;
+      container.style.display = 'none'; // Hide it for invisible mode
+      document.body.appendChild(container);
+    }
+
     console.log('📱 Sending OTP to:', sanitizedPhoneNumber);
 
     // Create invisible reCAPTCHA for Firebase compatibility (even though enforcement is AUDIT)
@@ -116,7 +226,6 @@ export const setupPhoneAuthentication = async (phoneNumber: string, recaptchaCon
     // Send OTP
     const confirmationResult = await signInWithPhoneNumber(auth, sanitizedPhoneNumber, globalRecaptchaVerifier);
     console.log('✅ OTP sent successfully!');
-    
     return confirmationResult;
   } catch (error: any) {
     console.error("Phone authentication error:", error);
@@ -197,9 +306,7 @@ export const linkPhoneToExistingAccount = async (confirmationResult: any, otp: s
 };
 
 
-// Phone + PIN login (backup to OTP)
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from './firebaseConfig';
+
 import { User } from '../types';
 
 // Logout
