@@ -1050,7 +1050,7 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                     <div className="space-y-6">
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                         <div>
-                          <h2 className="text-2xl font-bold text-gray-800">Deus Projects</h2>
+                          <h2 className="text-2xl font-bold text-gray-800">Projects</h2>
                           <p className="text-sm text-gray-500 mt-1">Individual tailored design services</p>
                         </div>
                         {(user.role === Role.ADMIN || user.role === Role.DESIGNER) && (
@@ -1574,9 +1574,9 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                                   <p className="text-gray-900 font-medium">{profileDisplayData.phone}</p>
                                 </div>
                               )}
+                            </div>
                           </div>
                         </div>
-                      </div>
                         {/* Mobile-only Sign Out (visible inside Settings) */}
                         <div className="md:hidden mt-4">
                           <button
