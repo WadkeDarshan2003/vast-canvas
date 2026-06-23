@@ -345,12 +345,7 @@ const Login: React.FC<LoginProps> = ({ users = [] }) => {
 
             </form>
           )}
-          <div className="mt-6 pt-4 border-t border-white/10 text-center text-sm text-gray-400">
-            Are you a Business Owner? {' '}
-            <a href="?open=admins" className="text-blue-400 hover:text-blue-300 font-semibold underline underline-offset-4 decoration-blue-400/30">
-              Create Admin / Signup
-            </a>
-          </div>
+
         </div>
       </div>
     </div>
