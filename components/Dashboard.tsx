@@ -27,7 +27,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { subscribeToProjectTasks, subscribeToProjectDocuments } from '../services/projectDetailsService';
 import { subscribeToProjectFinancialRecords } from '../services/financialService';
-import { calculateProjectProgress, calculateTaskProgress, formatDateToIndian } from '../utils/taskUtils';
+import { calculateProjectProgress, calculateTaskProgress, formatDateToIndian, getProjectProgress } from '../utils/taskUtils';
 import { PACKAGE_VISUALS, buildPackageCreativeSummary, buildPlanCreativeSummary } from '../utils/packageUtils';
 import { getPackages } from '../services/packageService';
 import { Package } from '../types';
@@ -326,7 +326,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
     totalWorkCount === 0
       ? 0
       : Math.round(
-        allWork.reduce((sum, project) => sum + calculateProjectProgress(getProjectTasks(project.id)), 0) /
+        allWork.reduce((sum, project) => sum + getProjectProgress(project, getProjectTasks(project.id)), 0) /
         totalWorkCount
       );
 
@@ -542,7 +542,7 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, plans, users, onSelectP
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {recentProjects.map((project) => {
                 const tasks = getProjectTasks(project.id);
-                const progress = calculateProjectProgress(tasks);
+                const progress = getProjectProgress(project, tasks);
                 const openCount = tasks.filter((task) => task.status !== TaskStatus.DONE).length;
                 const clientName =
                   project.clientIds

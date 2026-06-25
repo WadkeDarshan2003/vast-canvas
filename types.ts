@@ -268,7 +268,7 @@ export interface ActivityLog {
 export interface ProjectDocument {
   id: string;
   name: string;
-  type: 'image' | 'pdf' | 'cad' | 'other';
+  type: 'image' | 'pdf' | 'cad' | 'link' | 'other';
   url: string;
   uploadedBy: string;
   uploadDate: string;

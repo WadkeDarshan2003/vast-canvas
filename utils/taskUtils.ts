@@ -1,4 +1,5 @@
-import { Task, Project, TaskStatus } from '../types';
+import { Task, Project, TaskStatus, ProjectPackage } from '../types';
+import { PACKAGE_VISUALS } from './packageUtils';
 
 export const calculateTaskProgress = (task: Task | Partial<Task>): number => {
   // If task has explicit progress field set, use that
@@ -33,6 +34,44 @@ export const calculateProjectProgress = (tasks: Task[]): number => {
   }, 0);
 
   return Math.round(totalProgress / tasks.length);
+};
+
+export const getProjectProgress = (project: Project | any, tasks?: Task[]): number => {
+  if (!project) return 0;
+
+  // Case 1: Plan-based or has packageType
+  if (project.packageType) {
+    const pkg = project.packageType as ProjectPackage;
+    let quota = 0;
+    const pkgVisual = PACKAGE_VISUALS[pkg];
+    if (pkgVisual) {
+      quota = pkgVisual.creativesPerYear;
+    } else {
+      const normalized = String(pkg).toLowerCase();
+      if (normalized.includes('starter') || normalized.includes('package 1') || normalized.includes('20')) quota = 20;
+      else if (normalized.includes('growth') || normalized.includes('package 2') || normalized.includes('50')) quota = 50;
+      else if (normalized.includes('business') || normalized.includes('package 3') || normalized.includes('100')) quota = 100;
+      else if (normalized.includes('impact') || normalized.includes('package 4') || normalized.includes('200')) quota = 200;
+    }
+
+    if (quota <= 0) return 0;
+
+    const creativesList = project.creatives || project.workCards || [];
+    const deliveredCount = creativesList.filter((c: any) => c.status === 'delivered').length;
+    const used = creativesList.length > 0 ? deliveredCount : (project.creativeUsed || 0);
+    return Math.min(Math.round((used / quota) * 100), 100);
+  }
+
+  // Case 2: Custom project with workCards
+  if (project.workCards && project.workCards.length > 0) {
+    const total = project.workCards.length;
+    const delivered = project.workCards.filter((w: any) => w.status === 'delivered').length;
+    return Math.round((delivered / total) * 100);
+  }
+
+  // Case 3: Custom project with tasks
+  const projectTasks = tasks || project.tasks || [];
+  return calculateProjectProgress(projectTasks);
 };
 
 export const isTaskFrozen = (status?: TaskStatus) => {

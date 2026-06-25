@@ -40,8 +40,8 @@ export const getProjectAccess = (
     // Meetings: Admin, Lead Designer, Client, Team members
     canManageMeetings: isAdmin || isLeadDesigner || isClient || isTeamMember || (isVendor && (project.vendorIds || []).includes(user.id)),
     
-    // View Financials: Admin, Lead Designer, Client (not Vendors)
-    canViewFinancials: !isVendor && (isAdmin || isLeadDesigner || isClient),
+    // View Financials: Admin, Client (not Designers, not Vendors)
+    canViewFinancials: isAdmin || isClient,
     
     // Manage Financials: Admin only
     canManageFinancials: isAdmin,
@@ -87,7 +87,7 @@ export const getFinancialAccess = (user: User, project: Project) => {
   const isClient = user.role === Role.CLIENT && (project.clientId === user.id || (project.clientIds || []).includes(user.id));
 
   return {
-    canView: isAdmin || isLeadDesigner || isClient,
+    canView: isAdmin || isClient,
     canAdd: isAdmin,
     canEdit: isAdmin,
     canDelete: isAdmin,

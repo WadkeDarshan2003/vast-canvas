@@ -455,16 +455,18 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ users, onClose, onSav
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-2">Budget (₹)</label>
-                  <input
-                    type="number"
-                    value={formData.budget || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, budget: e.target.value ? Number(e.target.value) : undefined }))}
-                    className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 bg-gray-50 focus:outline-none focus:border-blue-500"
-                    placeholder="0"
-                  />
-                </div>
+                {user?.role !== Role.DESIGNER && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">Budget (₹)</label>
+                    <input
+                      type="number"
+                      value={formData.budget || ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, budget: e.target.value ? Number(e.target.value) : undefined }))}
+                      className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 bg-gray-50 focus:outline-none focus:border-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>

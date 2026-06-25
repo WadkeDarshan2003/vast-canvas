@@ -1,6 +1,6 @@
 {
   "functions": {
-    "source": "vast-canvas-backend/functions",
+    "source": "functions",
     "codebase": "default",
     "runtime": "nodejs24"
   },

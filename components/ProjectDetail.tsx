@@ -44,7 +44,7 @@ import {
   Calendar, DollarSign, Plus, CheckCircle, 
   ChevronRight, ChevronLeft, Lock, Clock, FileText,
   Layout, ListChecks, ArrowRight, User as UserIcon, X, FolderKanban,
-  MessageSquare, ThumbsUp, ThumbsDown, Send, Shield, History, Layers, Link2, AlertCircle, Tag, Upload, Ban, PauseCircle, PlayCircle,
+  MessageSquare, ThumbsUp, ThumbsDown, Send, Shield, History, Layers, Link2, ExternalLink, AlertCircle, Tag, Upload, Ban, PauseCircle, PlayCircle,
   File as FileIcon, Eye, EyeOff, Download, Pencil, Mail, Filter, IndianRupee, Bell, MessageCircle, Users, MessageCircle as CommentIcon, Trash2, Edit3, Check, Wallet
 } from 'lucide-react';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -172,9 +172,12 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project: rawProject, proj
     if (initialTab) return initialTab;
     const saved = localStorage.getItem('last_project_tab');
     if (saved && ['discovery', 'plan', 'financials', 'team', 'timeline', 'documents', 'meetings'].includes(saved)) {
+      if (saved === 'discovery' && project.packageType) {
+        return 'plan';
+      }
       return saved as any;
     }
-    return 'discovery';
+    return project.packageType ? 'plan' : 'discovery';
   });
 
   // Save active tab to localStorage
@@ -242,7 +245,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project: rawProject, proj
 
   // Documents State
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
-  const [newDoc, setNewDoc] = useState<{name: string, type: 'image' | 'pdf' | 'other', sharedWith: string[], attachToTaskId?: string}>({ name: '', type: 'other', sharedWith: [] });
+  const [newDoc, setNewDoc] = useState<{name: string, type: 'image' | 'pdf' | 'other' | 'link', sharedWith: string[], attachToTaskId?: string}>({ name: '', type: 'other', sharedWith: [] });
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [showDocErrors, setShowDocErrors] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -258,6 +261,12 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project: rawProject, proj
   const [tempSharedWith, setTempSharedWith] = useState<string[]>([]);
   const [isTaskDocModalOpen, setIsTaskDocModalOpen] = useState(false);
   const [selectedFilePreviews, setSelectedFilePreviews] = useState<Record<string, string>>({});
+
+  // Link and Date Filter States
+  const [uploadMode, setUploadMode] = useState<'file' | 'link'>('file');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [docTimeFilter, setDocTimeFilter] = useState<'all' | 'week' | 'month' | 'date'>('all');
+  const [docFilterDate, setDocFilterDate] = useState<string>('');
 
   // Financials State
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
@@ -514,8 +523,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project: rawProject, proj
     ).length;
 
     const totalDesignQuota = config.designsPerYear > 0 ? config.designsPerYear : creativesList.length;
-    const usedCount = Math.min(totalDesignQuota, creativesList.length);
-    const remainingCount = Math.max(0, totalDesignQuota - usedCount);
+    const usedCount = deliveredCount;
+    const remainingCount = Math.max(0, totalDesignQuota - deliveredCount);
     const deliveredPercent = totalDesignQuota > 0 ? Math.round((deliveredCount / totalDesignQuota) * 100) : 0;
     const inProcessPercent = totalDesignQuota > 0 ? Math.round((inProcessCount / totalDesignQuota) * 100) : 0;
 
@@ -751,21 +760,31 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project: rawProject, proj
   const isClient = user.role === Role.CLIENT;
   const isVendor = user.role === Role.VENDOR;
   const isAdmin = user.role === Role.ADMIN;
+  const isDesigner = user.role === Role.DESIGNER;
   const isLeadDesigner = user.role === Role.DESIGNER && project.leadDesignerId === user.id;
 
   const canEditProject = isAdmin || isLeadDesigner;
   // Documents: Everyone can upload/view if shared with them.
   const canUploadDocs = true; 
-  const canViewFinancials = !isVendor; 
+  const canViewFinancials = isAdmin || isClient; 
   const canUseAI = canEditProject;
 
   // Reset active tab if it becomes inaccessible based on current project/role
   useEffect(() => {
-    if (activeTab === 'plan' && (!project.packageType)) setActiveTab('discovery');
-    else if (activeTab === 'work' && (!!project.packageType)) setActiveTab('discovery');
-    else if (activeTab === 'financials' && !canViewFinancials) setActiveTab('discovery');
-    else if (activeTab === 'team' && isClient) setActiveTab('discovery');
-    else if (activeTab === 'timeline' && isVendor) setActiveTab('discovery');
+    const isDiscoveryHidden = !!project.packageType;
+    if (activeTab === 'discovery' && isDiscoveryHidden) {
+      setActiveTab('plan');
+    } else if (activeTab === 'plan' && !project.packageType) {
+      setActiveTab(isDiscoveryHidden ? 'work' : 'discovery');
+    } else if (activeTab === 'work' && !!project.packageType) {
+      setActiveTab('plan');
+    } else if (activeTab === 'financials' && !canViewFinancials) {
+      setActiveTab(project.packageType ? 'plan' : 'discovery');
+    } else if (activeTab === 'team' && isClient) {
+      setActiveTab(project.packageType ? 'plan' : 'discovery');
+    } else if (activeTab === 'timeline' && isVendor) {
+      setActiveTab(project.packageType ? 'plan' : 'discovery');
+    }
   }, [activeTab, project.packageType, isClient, isVendor, canViewFinancials]);
 
   // Swipe Logic
@@ -790,7 +809,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project: rawProject, proj
 
     if (isLeftSwipe || isRightSwipe) {
       const tabs = [
-        { id: 'discovery', hidden: isVendor || isClient ? false : false },
+        { id: 'discovery', hidden: !!project.packageType },
         { id: 'work', hidden: !!project.packageType },
         { id: 'plan', hidden: !project.packageType },
         { id: 'documents', hidden: false },
@@ -1506,6 +1525,59 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project: rawProject, proj
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
 
   const handleUploadDocument = async () => {
+      if (uploadMode === 'link') {
+        if (!newDoc.name || !linkUrl) {
+          setShowDocErrors(true);
+          addNotification('Validation Error', 'Please enter a name and a link URL.', 'error', undefined, project.id, project.name);
+          return;
+        }
+        
+        setIsUploadingDocument(true);
+        try {
+          const doc = {
+            name: newDoc.name,
+            type: 'link', 
+            url: linkUrl,
+            uploadedBy: user.id,
+            uploadDate: new Date().toISOString(),
+            sharedWith: newDoc.sharedWith.length > 0 ? newDoc.sharedWith : [Role.ADMIN, Role.DESIGNER, Role.CLIENT],
+            approvalStatus: 'pending'
+          };
+          
+          const createdDocId = await createDocument(project.id, doc as Omit<ProjectDocument, 'id'>);
+          
+          const sharedNames = newDoc.sharedWith.length > 0 
+            ? newDoc.sharedWith.map(id => {
+                if (id === Role.ADMIN || id === Role.DESIGNER || id === Role.CLIENT) return id;
+                const user = users.find(u => u.id === id);
+                return user?.name || id;
+              }).join(', ')
+            : 'Admin, Designer, Client';
+
+          const now = new Date().toISOString();
+          logTimelineEvent(
+            project.id,
+            `Link Added: ${newDoc.name}`,
+            `Link "${newDoc.name}" added by ${user.name}. Shared with: ${sharedNames}`,
+            'completed',
+            now,
+            now
+          ).catch(err => console.error('Timeline logging failed:', err));
+
+          setIsDocModalOpen(false);
+          setNewDoc({ name: '', type: 'other', sharedWith: [], attachToTaskId: '' });
+          setLinkUrl('');
+          setShowDocErrors(false);
+          addNotification('Success', 'Link added successfully.', 'success', undefined, project.id, project.name);
+        } catch (error: any) {
+          console.error("Failed to add link:", error);
+          addNotification('Error', 'Failed to add link.', 'error', undefined, project.id, project.name);
+        } finally {
+          setIsUploadingDocument(false);
+        }
+        return;
+      }
+
       // Allow upload if either files are selected OR just a name is provided (for mock/link purposes)
       if (selectedFiles.length === 0 && !newDoc.name) {
         setShowDocErrors(true);
@@ -3914,7 +3986,7 @@ addNotification('Error', 'Failed to complete task', 'error');
       <div ref={tabsContainerRef} className="bg-gray-50 overflow-x-auto md:overflow-hidden [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded scrollbar-hide">
         <div className="flex gap-1 md:gap-6 px-4 md:px-6 min-w-max md:min-w-0 md:w-full md:justify-center">
           {[
-            { id: 'discovery', label: 'Chat', icon: FileText, hidden: isVendor || isClient ? false : false },
+            { id: 'discovery', label: 'Chat', icon: FileText, hidden: !!project.packageType },
             { id: 'work', label: 'Work Cards', icon: Layout, hidden: !!project.packageType },
             { id: 'plan', label: 'Plan', icon: Layout, hidden: !project.packageType },
             { id: 'documents', label: 'Gallery', icon: FileIcon, hidden: false },
@@ -4314,11 +4386,15 @@ addNotification('Error', 'Failed to complete task', 'error');
                       <h2 className="text-3xl md:text-4xl font-bold">{creativePlanSummary.title}</h2>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-8 gap-y-3 mt-4 bg-gray-900/50 p-4 rounded-xl border border-gray-700/50">
-                      <div className="flex items-center gap-2">
-                        <span className="text-white/70 text-sm font-medium">Investment:</span>
-                        <span className="text-white font-bold text-sm">{creativePlanSummary.packageKey === 'custom' ? `${creativePlanSummary.budgetLabel} /Year` : creativePlanSummary.investmentLabel} <span className="text-white/60 text-xs font-normal">({creativePlanSummary.perDesignLabel})</span></span>
-                      </div>
-                      <div className="w-px h-5 bg-gray-700/50 hidden md:block"></div>
+                      {!isDesigner && (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/70 text-sm font-medium">Investment:</span>
+                            <span className="text-white font-bold text-sm">{creativePlanSummary.packageKey === 'custom' ? `${creativePlanSummary.budgetLabel} /Year` : creativePlanSummary.investmentLabel} <span className="text-white/60 text-xs font-normal">({creativePlanSummary.perDesignLabel})</span></span>
+                          </div>
+                          <div className="w-px h-5 bg-gray-700/50 hidden md:block"></div>
+                        </>
+                      )}
                       <div className="flex items-center gap-2">
                         <span className="text-white/70 text-sm font-medium">Creatives:</span>
                         <span className="text-white font-bold text-sm">{creativePlanSummary.totalDesignQuota} /Year</span>
@@ -4359,10 +4435,12 @@ addNotification('Error', 'Failed to complete task', 'error');
                     <div className="flex flex-col">
                       <h3 className="font-bold text-base mb-4 text-gray-900 border-b border-gray-900/10 pb-2">Budget & Progress</h3>
                       <div className="space-y-3 flex-1 flex flex-col">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Budget:</span>
-                          <span className="text-sm font-bold text-gray-900">{creativePlanSummary.budgetLabel}</span>
-                        </div>
+                        {!isDesigner && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Budget:</span>
+                            <span className="text-sm font-bold text-gray-900">{creativePlanSummary.budgetLabel}</span>
+                          </div>
+                        )}
                         <div className="mt-auto">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Creative Delivery</span>
@@ -4372,10 +4450,6 @@ addNotification('Error', 'Failed to complete task', 'error');
                             <div className="flex-1 bg-white/60 rounded p-1.5 text-center shadow-sm">
                               <p className="text-[10px] text-gray-600 mb-0.5 font-semibold">Delivered</p>
                               <p className="text-base font-bold text-green-600 leading-none">{creativePlanSummary.deliveredCount}</p>
-                            </div>
-                            <div className="flex-1 bg-white/60 rounded p-1.5 text-center shadow-sm">
-                              <p className="text-[10px] text-gray-600 mb-0.5 font-semibold">Process</p>
-                              <p className="text-base font-bold text-blue-600 leading-none">{creativePlanSummary.inProcessCount}</p>
                             </div>
                             <div className="flex-1 bg-white/60 rounded p-1.5 text-center shadow-sm">
                               <p className="text-[10px] text-gray-600 mb-0.5 font-semibold">Remain</p>
@@ -4672,14 +4746,49 @@ addNotification('Error', 'Failed to complete task', 'error');
         {/* GALLERY TAB - DELIVERABLES */}
         {activeTab === 'documents' && (
            <div className="max-w-6xl mx-auto space-y-6 p-4 md:p-6">
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
                  <div>
                     <h3 className="text-xl md:text-lg font-bold text-gray-800">Deliverables Gallery</h3>
                     <p className="text-base md:text-sm text-gray-500">Creative deliverables, designs, and assets.</p>
                  </div>
                  {/* Filter Info */}
                  {!canEditProject && (
-                    <span className="text-sm md:text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">Viewing as {user.role}</span>
+                    <span className="text-sm md:text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded self-start md:self-auto">Viewing as {user.role}</span>
+                 )}
+              </div>
+
+              {/* Gallery Filter Controls */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center justify-between gap-4">
+                 <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                       <Filter className="w-4 h-4 text-gray-400" /> Filter:
+                    </span>
+                    <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                       {(['all', 'week', 'month', 'date'] as const).map(mode => (
+                          <button
+                            key={mode}
+                            onClick={() => {
+                              setDocTimeFilter(mode);
+                              if (mode !== 'date') setDocFilterDate('');
+                            }}
+                            className={`px-3 py-1.5 text-xs font-bold transition-colors ${docTimeFilter === mode ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                          >
+                            {mode === 'all' ? 'All Time' : mode === 'week' ? 'This Week' : mode === 'month' ? 'This Month' : 'Select Date'}
+                          </button>
+                       ))}
+                    </div>
+                 </div>
+                 
+                 {docTimeFilter === 'date' && (
+                    <div className="flex items-center gap-2 animate-fade-in">
+                       <label className="text-xs font-bold text-gray-500 uppercase">Choose Date:</label>
+                       <input 
+                         type="date" 
+                         className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+                         value={docFilterDate}
+                         onChange={e => setDocFilterDate(e.target.value)}
+                       />
+                    </div>
                  )}
               </div>
 
@@ -4688,11 +4797,17 @@ addNotification('Error', 'Failed to complete task', 'error');
                  {/* Upload Button - Available to all authorized roles */}
                  {canUploadDocs && user.role !== Role.VENDOR && (
                    <button 
-                     onClick={() => { setIsDocModalOpen(true); setSelectedFiles([]); }}
+                     onClick={() => { 
+                       setIsDocModalOpen(true); 
+                       setSelectedFiles([]); 
+                       setUploadMode('file'); 
+                       setLinkUrl(''); 
+                       setNewDoc({ name: '', type: 'other', sharedWith: [] });
+                     }}
                      className="border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center p-6 hover:bg-gray-50 hover:border-gray-400 transition-all text-gray-400 hover:text-gray-600 bg-white"
                    >
                       <Upload className="w-8 h-8 mb-2" />
-                      <span className="text-base md:text-sm font-bold">Upload File</span>
+                      <span className="text-base md:text-sm font-bold">Upload File / Link</span>
                    </button>
                  )}
 
@@ -4713,6 +4828,27 @@ addNotification('Error', 'Failed to complete task', 'error');
                       }
                       // Fallback: only show to admin
                       return user.role === Role.ADMIN;
+                    })
+                    .filter(doc => {
+                      if (docTimeFilter === 'all') return true;
+                      
+                      const uploadTime = new Date(doc.uploadDate).getTime();
+                      const nowTime = new Date().getTime();
+                      
+                      if (docTimeFilter === 'week') {
+                        const oneWeekAgo = nowTime - (7 * 24 * 60 * 60 * 1000);
+                        return uploadTime >= oneWeekAgo;
+                      }
+                      if (docTimeFilter === 'month') {
+                        const oneMonthAgo = nowTime - (30 * 24 * 60 * 60 * 1000);
+                        return uploadTime >= oneMonthAgo;
+                      }
+                      if (docTimeFilter === 'date') {
+                        if (!docFilterDate) return true;
+                        const docDateStr = new Date(doc.uploadDate).toISOString().split('T')[0];
+                        return docDateStr === docFilterDate;
+                      }
+                      return true;
                     })
                     .sort((a, b) => {
                       return getDocumentRecentTimestamp(b) - getDocumentRecentTimestamp(a);
@@ -4739,13 +4875,23 @@ addNotification('Error', 'Failed to complete task', 'error');
                             >
                                <Eye className="w-4 h-4" />
                             </button>
-                            <button 
-                              className="p-2 bg-white rounded-full text-gray-900 hover:bg-gray-100" 
-                              title="Download"
-                              onClick={() => handleDownloadDocument(doc)}
-                            >
-                               <Download className="w-4 h-4" />
-                            </button>
+                            {doc.type === 'link' ? (
+                              <button 
+                                className="p-2 bg-white rounded-full text-cyan-600 hover:bg-cyan-50" 
+                                title="Open Link"
+                                onClick={() => window.open(doc.url, '_blank')}
+                              >
+                                 <ExternalLink className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button 
+                                className="p-2 bg-white rounded-full text-gray-900 hover:bg-gray-100" 
+                                title="Download"
+                                onClick={() => handleDownloadDocument(doc)}
+                              >
+                                 <Download className="w-4 h-4" />
+                              </button>
+                            )}
                             {(doc.uploadedBy === user.id || canEditProject) && (
                               <button 
                                 className="p-2 bg-white rounded-full text-red-600 hover:bg-red-50" 
@@ -4823,6 +4969,11 @@ addNotification('Error', 'Failed to complete task', 'error');
                               <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-red-50 to-red-100">
                                  <FileText className="w-12 h-12 text-red-400 mb-2" />
                                  <span className="text-sm font-bold text-red-600">PDF</span>
+                              </div>
+                          ) : doc.type === 'link' ? (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-cyan-50 to-cyan-100">
+                                 <Link2 className="w-12 h-12 text-cyan-500 mb-2" />
+                                 <span className="text-sm font-bold text-cyan-600">LINK</span>
                               </div>
                           ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
@@ -6815,18 +6966,125 @@ addNotification('Error', 'Failed to complete task', 'error');
          <div className="fixed inset-0 bg-black/50 z-[400] flex items-center justify-center p-4">
             <div className="bg-white shadow-xl w-full max-w-lg flex flex-col animate-fade-in rounded-2xl max-h-[90vh]">
                {/* Fixed Header */}
-               <div className="p-4 md:p-6 border-b border-gray-100 flex-shrink-0">
-                   <h3 className="text-xl md:text-lg font-bold flex items-center gap-2 text-gray-900"><Upload className="w-5 h-5 md:w-4 md:h-4"/> Upload Document</h3>
+               <div className="p-4 md:p-6 border-b border-gray-100 flex-shrink-0 flex justify-between items-center">
+                   <h3 className="text-xl md:text-lg font-bold flex items-center gap-2 text-gray-900"><Upload className="w-5 h-5 md:w-4 md:h-4"/> Add Gallery Deliverable</h3>
+               </div>
+
+               {/* Tab Selector */}
+               <div className="flex border-b border-gray-100 bg-gray-50/50">
+                  <button 
+                    onClick={() => { setUploadMode('file'); }}
+                    className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${uploadMode === 'file' ? 'border-gray-900 text-gray-900 bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                  >
+                     Upload File / PDF
+                  </button>
+                  <button 
+                    onClick={() => { setUploadMode('link'); }}
+                    className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${uploadMode === 'link' ? 'border-gray-900 text-gray-900 bg-white' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                  >
+                     Add Link URL
+                  </button>
                </div>
                
                {/* Scrollable Content */}
                <div className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-thin space-y-4">
-                  <input 
-                    type="text" placeholder="Document Name (e.g. Brand Guidelines.pdf, Wireframes.png) - optional when uploading files" 
-                    className={`${getInputClass(showDocErrors && !newDoc.name && selectedFiles.length === 0)} text-base md:text-sm`}
-                    value={newDoc.name} onChange={e => setNewDoc({...newDoc, name: e.target.value})}
-                  />
-                  {/* ... rest of doc modal ... */}
+                  <div>
+                     <label className="text-base md:text-xs font-bold text-gray-500 uppercase mb-2 block">Name / Title:</label>
+                     <input 
+                       type="text" placeholder={uploadMode === 'link' ? "e.g., Figma Board, Google Drive Asset" : "e.g., Design Overviews (optional)"}
+                       className={`${getInputClass(showDocErrors && !newDoc.name)} text-base md:text-sm w-full`}
+                       value={newDoc.name} onChange={e => setNewDoc({...newDoc, name: e.target.value})}
+                     />
+                  </div>
+
+                  {uploadMode === 'link' ? (
+                     <div className="space-y-2">
+                        <label className="text-base md:text-xs font-bold text-gray-500 uppercase block">Link URL:</label>
+                        <input 
+                          type="url" 
+                          placeholder="https://example.com/..." 
+                          className={`${getInputClass(showDocErrors && !linkUrl)} text-base md:text-sm w-full`}
+                          value={linkUrl} 
+                          onChange={e => setLinkUrl(e.target.value)}
+                        />
+                     </div>
+                  ) : (
+                     <div 
+                       className="bg-gray-50 p-4 md:p-6 rounded-lg border-2 border-dashed border-gray-300 text-base md:text-sm text-gray-500 hover:bg-gray-100 hover:border-gray-400 transition-colors cursor-pointer relative"
+                       onClick={() => fileInputRef.current?.click()}
+                     >
+                        {selectedFiles.length > 0 ? (
+                          <div className="flex flex-col items-start gap-2">
+                             <div className="w-full flex items-center gap-2">
+                               <Upload className="w-8 h-8 text-blue-500 flex-shrink-0" />
+                               <div className="flex-1 text-left">
+                                 <p className="font-bold text-base md:text-sm text-gray-800">{selectedFiles.length} file(s) selected</p>
+                                 <p className="text-sm md:text-xs text-gray-400">
+                                   Total size: {(selectedFiles.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(1)} KB
+                                 </p>
+                               </div>
+                             </div>
+                             <div className="w-full mt-2 grid grid-cols-3 gap-2 max-h-48 overflow-y-auto border-t border-gray-200 pt-2 p-1">
+                               {selectedFiles.map((file, idx) => (
+                                 <div key={idx} className="relative group aspect-square rounded-lg border border-gray-200 overflow-hidden bg-white">
+                                   {selectedFilePreviews[file.name] ? (
+                                     <img src={selectedFilePreviews[file.name]} alt={file.name} className="w-full h-full object-cover" />
+                                   ) : (
+                                     <div className="w-full h-full flex flex-col items-center justify-center p-1 bg-gray-50">
+                                       <FileIcon className="w-6 h-6 text-gray-400" />
+                                       <span className="text-[8px] text-gray-500 truncate w-full text-center mt-1">{file.name}</span>
+                                     </div>
+                                   )}
+                                   <button
+                                     type="button"
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       setSelectedFiles(selectedFiles.filter((_, i) => i !== idx));
+                                       const newPreviews = { ...selectedFilePreviews };
+                                       delete newPreviews[file.name];
+                                       setSelectedFilePreviews(newPreviews);
+                                     }}
+                                     className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                     title="Remove file"
+                                   >
+                                     <X className="w-3 h-3" />
+                                   </button>
+                                 </div>
+                               ))}
+                             </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center">
+                             <Upload className="w-8 h-8 text-gray-300 mb-2" />
+                             <p className="text-base md:text-sm">Click to select files (PDF or Images)</p>
+                             <p className="text-sm md:text-xs text-gray-400 mt-1">or drag and drop here (multiple files supported)</p>
+                          </div>
+                        )}
+                        <input 
+                          type="file"
+                          multiple
+                          accept="image/*,application/pdf"
+                          ref={fileInputRef}
+                          onChange={(e) => {
+                             const files = Array.from(e.target.files || []);
+                             setSelectedFiles(prev => [...prev, ...files]);
+                             files.forEach(file => {
+                               if (file.type.startsWith('image/')) {
+                                 const reader = new FileReader();
+                                 reader.onload = () => {
+                                   setSelectedFilePreviews(prev => ({ ...prev, [file.name]: reader.result as string }));
+                                 };
+                                 reader.readAsDataURL(file);
+                               }
+                             });
+                             if (fileInputRef.current) fileInputRef.current.value = '';
+                          }}
+                          className="hidden"
+                          title="Select files to upload"
+                        />
+                     </div>
+                  )}
+
                   <div>
                      <label className="text-base md:text-xs font-bold text-gray-500 uppercase mb-2 block">Share With Project Team:</label>
                      <div className="space-y-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
@@ -6857,91 +7115,15 @@ addNotification('Error', 'Failed to complete task', 'error');
                      </div>
                   </div>
 
-
-
-                  <div 
-                    className="bg-gray-50 p-4 md:p-6 rounded-lg border-2 border-dashed border-gray-300 text-base md:text-sm text-gray-500 hover:bg-gray-100 hover:border-gray-400 transition-colors cursor-pointer relative"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                     {selectedFiles.length > 0 ? (
-                       <div className="flex flex-col items-start gap-2">
-                          <div className="w-full flex items-center gap-2">
-                            <Upload className="w-8 h-8 text-blue-500 flex-shrink-0" />
-                            <div className="flex-1 text-left">
-                              <p className="font-bold text-base md:text-sm text-gray-800">{selectedFiles.length} file(s) selected</p>
-                              <p className="text-sm md:text-xs text-gray-400">
-                                Total size: {(selectedFiles.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(1)} KB
-                              </p>
-                            </div>
-                          </div>
-                          <div className="w-full mt-2 grid grid-cols-3 gap-2 max-h-48 overflow-y-auto border-t border-gray-200 pt-2 p-1">
-                            {selectedFiles.map((file, idx) => (
-                              <div key={idx} className="relative group aspect-square rounded-lg border border-gray-200 overflow-hidden bg-white">
-                                {selectedFilePreviews[file.name] ? (
-                                  <img src={selectedFilePreviews[file.name]} alt={file.name} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex flex-col items-center justify-center p-1 bg-gray-50">
-                                    <FileIcon className="w-6 h-6 text-gray-400" />
-                                    <span className="text-[8px] text-gray-500 truncate w-full text-center mt-1">{file.name}</span>
-                                  </div>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedFiles(selectedFiles.filter((_, i) => i !== idx));
-                                    const newPreviews = { ...selectedFilePreviews };
-                                    delete newPreviews[file.name];
-                                    setSelectedFilePreviews(newPreviews);
-                                  }}
-                                  className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                  title="Remove file"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                       </div>
-                     ) : (
-                       <div className="flex flex-col items-center">
-                          <Upload className="w-8 h-8 text-gray-300 mb-2" />
-                          <p className="text-base md:text-sm">Click to select files</p>
-                          <p className="text-sm md:text-xs text-gray-400 mt-1">or drag and drop here (multiple files supported)</p>
-                       </div>
-                     )}
-                     <input 
-                       type="file"
-                       multiple
-                       ref={fileInputRef}
-                       onChange={(e) => {
-                          const files = Array.from(e.target.files || []);
-                          setSelectedFiles(prev => [...prev, ...files]);
-                          files.forEach(file => {
-                            if (file.type.startsWith('image/')) {
-                              const reader = new FileReader();
-                              reader.onload = () => {
-                                setSelectedFilePreviews(prev => ({ ...prev, [file.name]: reader.result as string }));
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          });
-                          if (fileInputRef.current) fileInputRef.current.value = '';
-                       }}
-                       className="hidden"
-                       title="Select files to upload"
-                     />
-                  </div>
-
                   <div className="flex gap-2 pt-2">
-                     <button onClick={() => setIsDocModalOpen(false)} className="flex-1 py-2 md:py-1.5 text-base md:text-xs text-gray-500 hover:bg-gray-100 rounded">Cancel</button>
+                     <button onClick={() => setIsDocModalOpen(false)} className="flex-1 py-2 md:py-1.5 text-base md:text-xs text-gray-500 hover:bg-gray-100 rounded border border-gray-200">Cancel</button>
                      <button onClick={handleUploadDocument} className="flex-1 py-2 md:py-1.5 text-base md:text-xs bg-gray-900 text-white rounded font-bold hover:bg-gray-800" disabled={isUploadingDocument}>
                        {isUploadingDocument ? (
                          <span className="flex items-center justify-center gap-2">
                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
                            Uploading...
                          </span>
-                       ) : 'Upload'}
+                       ) : (uploadMode === 'link' ? 'Add Link' : 'Upload')}
                      </button>
                   </div>
                </div>
@@ -7733,6 +7915,48 @@ addNotification('Error', 'Failed to complete task', 'error');
                   alt={selectedImageDocument.name} 
                   className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" 
                 />
+              ) : selectedImageDocument.type === 'pdf' ? (
+                <div className="bg-white rounded-lg shadow-2xl p-2 flex flex-col items-center justify-center w-[85vw] h-[85vh]">
+                  <div className="w-full flex justify-between items-center px-4 py-2 border-b border-gray-200">
+                    <span className="font-bold text-gray-800 text-sm truncate max-w-[60%]">{selectedImageDocument.name}</span>
+                    <button 
+                      onClick={() => window.open(selectedImageDocument.url, '_blank')}
+                      className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded hover:bg-gray-800 font-semibold"
+                    >
+                      Open in New Tab
+                    </button>
+                  </div>
+                  <iframe 
+                    src={selectedImageDocument.url} 
+                    className="w-full flex-1 rounded-b-lg border-0" 
+                    title={selectedImageDocument.name}
+                  />
+                </div>
+              ) : selectedImageDocument.type === 'link' ? (
+                <div className="bg-white rounded-xl shadow-2xl p-8 flex flex-col items-center justify-center max-w-md w-full">
+                  <div className="w-20 h-20 bg-cyan-50 text-cyan-500 rounded-full flex items-center justify-center mb-4">
+                    <Link2 className="w-10 h-10" />
+                  </div>
+                  <h4 className="text-lg font-bold text-gray-900 text-center mb-2">{selectedImageDocument.name}</h4>
+                  <p className="text-sm text-gray-500 text-center mb-6 break-all max-w-[280px]">{selectedImageDocument.url}</p>
+                  <div className="flex gap-3 w-full">
+                    <button 
+                      onClick={() => setIsDocImageViewOpen(false)}
+                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={() => {
+                        window.open(selectedImageDocument.url, '_blank');
+                        setIsDocImageViewOpen(false);
+                      }}
+                      className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
+                    >
+                      Open Link
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <div className="bg-white rounded-lg shadow-2xl p-8 flex flex-col items-center justify-center">
                   <div className="w-32 h-40 mx-auto bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex flex-col items-center justify-center border-2 border-gray-300 mb-4">
@@ -8770,6 +8994,11 @@ addNotification('Error', 'Failed to complete task', 'error');
                             <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-red-50 to-red-100">
                               <FileText className="w-12 h-12 text-red-400 mb-2" />
                               <span className="text-xs font-bold text-red-600 uppercase">PDF</span>
+                            </div>
+                          ) : doc.type === 'link' ? (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-cyan-50 to-cyan-100 cursor-pointer" onClick={(e) => { e.stopPropagation(); window.open(doc.url, '_blank'); }}>
+                              <Link2 className="w-12 h-12 text-cyan-500 mb-2" />
+                              <span className="text-xs font-bold text-cyan-600 uppercase">LINK</span>
                             </div>
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">

@@ -34,7 +34,7 @@ import { useTenantBranding } from './hooks/useTenantBranding';
 import TeamScheduler from './components/TeamScheduler';
 
 
-import { calculateProjectProgress } from './utils/taskUtils';
+import { calculateProjectProgress, getProjectProgress } from './utils/taskUtils';
 
 // Helper for project list
 const ProjectList = ({
@@ -144,12 +144,12 @@ const ProjectList = ({
                 <div className="flex justify-between items-end mb-2">
                   <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400">Milestone Phase</span>
                   <span className="text-sm font-black text-slate-800">
-                    {calculateProjectProgress(realTimeTasks.get(project.id) || project.tasks)}%
+                    {getProjectProgress(project, realTimeTasks.get(project.id))}%
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
                   <div
-                    {...{ style: { width: `${calculateProjectProgress(realTimeTasks.get(project.id) || project.tasks)}%` } }}
+                    {...{ style: { width: `${getProjectProgress(project, realTimeTasks.get(project.id))}%` } }}
                     className="bg-slate-800 h-full rounded-full transition-all duration-1000 ease-out"
                   />
                 </div>
@@ -266,7 +266,8 @@ const PlanList = ({
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in plans-surface">
       {plans.map(plan => {
         const totalQuota = getCreativeQuota(plan.packageType);
-        const used = plan.creativeUsed || 0;
+        const deliveredCardsCount = (plan.creatives || []).filter(c => c.status === 'delivered').length;
+        const used = plan.creatives && plan.creatives.length > 0 ? deliveredCardsCount : (plan.creativeUsed || 0);
         const progressPercent = totalQuota > 0 ? Math.min(Math.round((used / totalQuota) * 100), 100) : 0;
         const styles = getPackageStyles(plan.packageType);
 
@@ -702,10 +703,14 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
   const handleUpdateProject = (updated: Project) => {
     const isPlan = plans.some(p => p.id === updated.id) || (!!updated.packageType && !projects.some(p => p.id === updated.id));
     if (isPlan) {
-      setPlans(prev => prev.map(p => p.id === updated.id ? (updated as unknown as Plan) : p));
+      const plan = updated as unknown as Plan;
+      if (plan.creatives && plan.creatives.length > 0) {
+        plan.creativeUsed = plan.creatives.filter(c => c.status === 'delivered').length;
+      }
+      setPlans(prev => prev.map(p => p.id === plan.id ? plan : p));
       setSelectedProject(updated);
-      const { id, ...planDataWithoutId } = updated as any;
-      updatePlan(updated.id, planDataWithoutId).catch((err: any) => {
+      const { id, ...planDataWithoutId } = plan as any;
+      updatePlan(plan.id, planDataWithoutId).catch((err: any) => {
         console.error('Failed to save plan update to Firebase:', err);
       });
     } else {
@@ -1245,13 +1250,13 @@ function AppContent({ projects, setProjects, plans, setPlans, users, setUsers }:
                                 case 'name-desc':
                                   return b.name.localeCompare(a.name);
                                 case 'progress-asc': {
-                                  const progressA = calculateProjectProgress(realTimeTasks.get(a.id) || []);
-                                  const progressB = calculateProjectProgress(realTimeTasks.get(b.id) || []);
+                                  const progressA = getProjectProgress(a, realTimeTasks.get(a.id));
+                                  const progressB = getProjectProgress(b, realTimeTasks.get(b.id));
                                   return progressA - progressB;
                                 }
                                 case 'progress-desc': {
-                                  const progressA = calculateProjectProgress(realTimeTasks.get(a.id) || []);
-                                  const progressB = calculateProjectProgress(realTimeTasks.get(b.id) || []);
+                                  const progressA = getProjectProgress(a, realTimeTasks.get(a.id));
+                                  const progressB = getProjectProgress(b, realTimeTasks.get(b.id));
                                   return progressB - progressA;
                                 }
                                 case 'recent-asc': {
