@@ -3940,7 +3940,7 @@ addNotification('Error', 'Failed to complete task', 'error');
                 </div>
                 <div className="flex flex-wrap items-center gap-3 md:gap-4 text-xs md:text-xs text-gray-600 mt-1.5 md:mt-1">
                   <span className="flex items-center gap-1 whitespace-nowrap"><Clock className="w-3 h-3 flex-shrink-0" /> Due: {formatDateToIndian(project.deadline)}</span>
-                  {!isVendor && (
+                  {!isVendor && !isDesigner && (
                     <span className="flex items-center gap-1 whitespace-nowrap"><Wallet className="w-3 h-3 flex-shrink-0" /> Budget: ₹{project.budget.toLocaleString()}</span>
                   )}
                 </div>
